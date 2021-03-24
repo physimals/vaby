@@ -1,0 +1,9 @@
+*.pyc
+*.nii
+*.nii.gz
+doc/html
+dist/
+build/
+*.egg-info
+_version.py
+

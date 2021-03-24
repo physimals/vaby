@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Setup script for vb_core
+Setup script for varbay
 """
 import os
 import subprocess
@@ -10,7 +10,7 @@ import io
 from setuptools import setup
 from setuptools import find_packages
 
-MODULE = 'vb_core'
+MODULE = 'varbay'
 
 def get_filetext(rootdir, filename):
     """ Get the text of a local file """
@@ -74,7 +74,7 @@ def get_version(rootdir):
 
 MODULE_DIR = os.path.abspath(os.path.dirname(__file__))
 KWARGS = {
-    'name' : 'vb_core',
+    'name' : 'varbay',
     'version' : get_version(MODULE_DIR),
     'description' : 'Core code for implementation of Variational Bayes for timeseries model fitting',
     'long_description' : get_filetext(MODULE_DIR, 'README.md'),
@@ -87,10 +87,10 @@ KWARGS = {
     'package_data' : {},
     'entry_points' : {
         'vb.models' : [
-            "exp=vb_core.models.exp:ExpModel",
-            "biexp=vb_core.models.exp:BiExpModel",
-            "constant=vb_core.models.misc:ConstantModel",
-            "poly=vb_core.models.misc:PolyModel",
+            "exp=varbay.models.exp:ExpModel",
+            "biexp=varbay.models.exp:BiExpModel",
+            "constant=varbay.models.misc:ConstantModel",
+            "poly=varbay.models.misc:PolyModel",
         ],
     },
 }

@@ -6,9 +6,9 @@ try:
 except ImportError:
     import tensorflow as tf
 
-from svb import __version__
-from svb.model import Model
-from svb.parameter import get_parameter
+from varbay import __version__
+from varbay.model import Model
+from varbay.parameter import get_parameter
 
 class ConstantModel(Model):
     """

@@ -24,7 +24,7 @@ def get_model_class(model_name):
     """
     global _models_loaded
     if not _models_loaded:
-        for model in pkg_resources.iter_entry_points('svb.models'):
+        for model in pkg_resources.iter_entry_points('varbay.models'):
             MODELS[model.name] = model.load()
         _models_loaded = True
 

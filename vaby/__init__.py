@@ -1,5 +1,5 @@
 """
-Implementation of Stochastic Variational Bayesian inference for fitting timeseries data
+Core classes for Variational Bayesian inference on timeseries data
 """
 try:
     from ._version import __version__, __timestamp__

@@ -86,7 +86,7 @@ KWARGS = {
     'packages' : find_packages(),
     'package_data' : {},
     'entry_points' : {
-        'vb.models' : [
+        'vaby.models' : [
             "exp=vaby.models.exp:ExpModel",
             "biexp=vaby.models.exp:BiExpModel",
             "constant=vaby.models.misc:ConstantModel",

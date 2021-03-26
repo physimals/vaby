@@ -21,10 +21,14 @@ _models_loaded = False
 def get_model_class(model_name):
     """
     Get a model class by name
+
+    :param model_name: Name of the model
+    :return Model class (not instantiated)
+    :raise: ValueError if model not found
     """
     global _models_loaded
     if not _models_loaded:
-        for model in pkg_resources.iter_entry_points('varbay.models'):
+        for model in pkg_resources.iter_entry_points('vaby.models'):
             MODELS[model.name] = model.load()
         _models_loaded = True
 
@@ -35,6 +39,17 @@ def get_model_class(model_name):
     return model_class
 
 class ModelOption:
+    """
+    A model option
+
+    :attr attr_name: Name of the attribute to be created on the model object
+    :attr desc: Description of the option
+    :attr clargs: Sequence of possible command line arguments
+                  (attr_name with _ replaced with - if not specified)
+    :attr default: Default value (None if not specified)
+    :attr units: Units as a string
+    :attr type: Python data type
+    """
     def __init__(self, attr_name, desc, **kwargs):
         self.attr_name = attr_name
         self.desc = desc
@@ -47,8 +62,9 @@ class Model(LogBase):
     """
     A forward model
 
-    :attr params: Sequence of ``Parameter`` objects
-    :attr nparams: Number of model parameters
+    :attr data_model: DataModel associated with the model. This defines the shape and
+                      geometric relationship of the data being modelled
+    :attr params:     Sequence of ``Parameter`` objects
     """
     OPTIONS = [
         ModelOption("dt", "Time separation between volumes", type=float, default=1.0),
@@ -82,16 +98,11 @@ class Model(LogBase):
         """
         Get the full set of timeseries time values
 
-        :param n_tpts: Number of time points required for the data to be fitted
-        :param shape: Shape of source data which may affect the times assigned
-
         By default this is a linear space using the attributes ``t0`` and ``dt``.
-        Some models may have time values fixed by some other configuration. If
-        the number of time points is fixed by the model it must match the
-        supplied value ``n_tpts``.
+        Some models may have time values fixed by some other configuration.
 
-        :return: Either a Numpy array of shape [n_tpts] or a Numpy array of shape
-                 shape + [n_tpts] for voxelwise timepoints
+        :return: Either a 1D Numpy array of shape [n_tpts] or a 2D Numpy array of shape
+                 [N, T] for nodewise timepoints
         """
         return np.linspace(self.t0, self.t0+self.data_model.n_tpts*self.dt, num=self.data_model.n_tpts, endpoint=False)
 

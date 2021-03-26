@@ -6,10 +6,10 @@ try:
 except ImportError:
     import tensorflow as tf
 
-from varbay import __version__
-from varbay.model import Model
-from varbay.parameter import Parameter, get_parameter
-import varbay.dist as dist
+from vaby import __version__
+from vaby.model import Model
+from vaby.parameter import Parameter, get_parameter
+import vaby.dist as dist
 
 class MultiExpModel(Model):
     """

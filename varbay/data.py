@@ -30,7 +30,7 @@ class DataModel(LogBase):
         self.data_flattened = self.data_vol.reshape(-1, self.n_tpts)
 
         # If there is a mask load it and use it to mask the data
-        if mask:
+        if mask is not None:
             mask_nii, self.mask_vol = self._get_data(mask)
             if self.shape != list(self.mask_vol.shape):
                 raise ValueError("Mask has different shape to main data: %s vs %s" % (self.shape, self.mask_vol.shape))

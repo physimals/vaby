@@ -3,10 +3,7 @@ General utility functions
 """
 import logging
 
-try:
-    import tensorflow.compat.v1 as tf
-except ImportError:
-    import tensorflow as tf
+import tensorflow as tf
 
 def ValueList(value_type):
     """

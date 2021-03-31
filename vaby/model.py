@@ -6,10 +6,7 @@ import collections
 
 import numpy as np
 
-try:
-    import tensorflow.compat.v1 as tf
-except ImportError:
-    import tensorflow as tf
+import tensorflow as tf
    
 from .utils import LogBase, ValueList
 
@@ -123,16 +120,6 @@ class Model(LogBase):
                  for each voxel, and each sample (set of parameter values).
         """
         raise NotImplementedError("evaluate")
-
-    def ievaluate(self, params, tpts):
-        """
-        Evaluate the model outside of a TensorFlow session
-
-        Same as :func:`evaluate` but will run the evaluation
-        within a session and return the evaluated output tensor
-        """
-        with tf.Session():
-            return self.evaluate(tf.constant(params, dtype=tf.float32), tf.constant(tpts, dtype=tf.float32)).eval()
 
     def test_data(self, tpts, params_map):
         """

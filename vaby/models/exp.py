@@ -1,10 +1,7 @@
 """
 Multi-exponential models
 """
-try:
-    import tensorflow.compat.v1 as tf
-except ImportError:
-    import tensorflow as tf
+import tensorflow as tf
 
 from vaby import __version__
 from vaby.model import Model

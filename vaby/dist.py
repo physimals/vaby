@@ -3,10 +3,7 @@ Distributions that can be applied to a model parameter
 """
 import math
 
-try:
-    import tensorflow.compat.v1 as tf
-except ImportError:
-    import tensorflow as tf
+import tensorflow as tf
     
 from .utils import LogBase
 

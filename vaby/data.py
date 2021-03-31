@@ -1,5 +1,5 @@
 """
-SVB - Data model
+VABY - Data model
 """
 import math
 import collections
@@ -41,9 +41,7 @@ class DataModel(LogBase):
             self.mask_flattened = self.mask_vol.flatten()
 
         self.n_unmasked_voxels = self.data_flattened.shape[0]
-        
-        # FIXME By default parameter space is same as data space
-        self.n_vertices = self.n_unmasked_voxels
+        self.n_nodes = self.n_unmasked_voxels
 
         if kwargs.get("initial_posterior", None):
             self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
@@ -52,6 +50,18 @@ class DataModel(LogBase):
 
         self._calc_neighbours()
     
+    def nodes_to_voxels_ts(self, tensor, edge_scale=True):
+        return tensor
+
+    def nodes_to_voxels(self, tensor, edge_scale=True):
+        return tensor
+
+    def voxels_to_nodes(self, tensor, edge_scale=True):
+        return tensor
+
+    def voxels_to_nodes_ts(self, tensor, edge_scale=True):
+        return tensor
+
     def vertices_to_voxels(self, tensor, vertex_axis=0):
         """
         Map parameter vertex-based data to data voxels

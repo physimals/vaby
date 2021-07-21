@@ -1,13 +1,17 @@
 """
-General utility functions
+VABY - General utility functions
 """
 import logging
 
+import numpy as np
 import tensorflow as tf
+
+NP_DTYPE = np.float32
+TF_DTYPE = tf.float32
 
 def ValueList(value_type):
     """
-    Class used with argparse for options which can be given as a comma separated list
+    Class used with argparse for options which can be given as a space or comma separated list
     """
     def _call(value):
         return [value_type(v) for v in value.replace(",", " ").split()]
@@ -15,31 +19,18 @@ def ValueList(value_type):
 
 class LogBase(object):
     """
-    Base class that provides a named log and the ability to log tensors easily
+    Base class that provides a named log
     """
     def __init__(self, **kwargs):
         self.log = logging.getLogger(type(self).__name__)
 
-    def log_tf(self, tensor, level=logging.DEBUG, **kwargs):
-        """
-        Log a tensor
+def scipy_to_tf_sparse(scipy_sparse):
+    """Converts a scipy sparse matrix to TF representation"""
 
-        :param tensor: tf.Tensor
-        :param level: Logging level (default: DEBUG)
-
-        Keyword arguments:
-
-        :param summarize: Number of entries to include (default 100)
-        :param force: If True, always log this tensor regardless of log level
-        :param shape: If True, precede tensor with its shape
-        """
-        if self.log.isEnabledFor(level) or kwargs.get("force", False):
-            if not isinstance(tensor, tf.Tensor):
-                tensor = tf.constant(tensor, dtype=tf.float32)
-            items = [tensor]
-            if kwargs.get("shape", False):
-                items.insert(0, tf.shape(tensor))
-            return tf.Print(tensor, items, "\n%s" % kwargs.get("name", tensor.name),
-                            summarize=kwargs.get("summarize", 100))
-        else:
-            return tensor
+    spmat = scipy_sparse.tocoo()
+    return tf.SparseTensor(
+        indices=np.array([
+            spmat.row, spmat.col]).T,
+        values=spmat.data.astype(NP_DTYPE), 
+        dense_shape=spmat.shape, 
+    )

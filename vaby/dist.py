@@ -1,5 +1,5 @@
 """
-Distributions that can be applied to a model parameter
+VABY - Distributions that can be applied to a model parameter
 """
 import math
 
@@ -27,7 +27,7 @@ class Identity:
     simple identity transformation
     """
 
-    def int_values(self, ext_values, ns=tf):
+    def int_values(self, ext_values, ns=tf.math):
         """
         Convert external (model-visible) values to internal (inferred)
         values
@@ -39,7 +39,7 @@ class Identity:
         """
         return ext_values
 
-    def int_moments(self, ext_mean, ext_var, ns=tf):
+    def int_moments(self, ext_mean, ext_var, ns=tf.math):
         """
         Convert internal (inferred) mean/variance to external
         (model-visible) mean/variance
@@ -52,7 +52,7 @@ class Identity:
         """
         return ext_mean, ext_var
 
-    def ext_values(self, int_values, ns=tf):
+    def ext_values(self, int_values, ns=tf.math):
         """
         Convert external (model) values to internal
         (inferred) values
@@ -64,7 +64,7 @@ class Identity:
         """
         return int_values
 
-    def ext_moments(self, int_mean, int_var, ns=tf):
+    def ext_moments(self, int_mean, int_var, ns=tf.math):
         """
         Convert the external (model) mean/variance to internal
         (inferred) mean/variance
@@ -85,20 +85,20 @@ class Log(Identity):
     def __init__(self, geom=True):
         self._geom = geom
 
-    def int_values(self, ext_values, ns=tf):
+    def int_values(self, ext_values, ns=tf.math):
         return ns.log(ext_values)
 
-    def int_moments(self, ext_mean, ext_var, ns=tf):
+    def int_moments(self, ext_mean, ext_var, ns=tf.math):
         if self._geom:
             return ns.log(ext_mean), ns.log(ext_var)
         else:
             # See https://uk.mathworks.com/help/stats/lognstat.html
             return ns.log(ext_mean**2/ns.sqrt(ext_var + ext_mean**2)), ns.log(ext_var/ext_mean**2 + 1)
 
-    def ext_values(self, int_values, ns=tf):
+    def ext_values(self, int_values, ns=tf.math):
         return ns.exp(int_values)
 
-    def ext_moments(self, int_mean, int_var, ns=tf):
+    def ext_moments(self, int_mean, int_var, ns=tf.math):
         if self._geom:
             return ns.exp(int_mean), ns.exp(int_var)
         else:
@@ -109,10 +109,10 @@ class Abs(Identity):
     """
     Absolute value transform used for folded normal distribution
     """
-    def ext_values(self, int_values, ns=tf):
+    def ext_values(self, int_values, ns=tf.math):
         return ns.abs(int_values)
 
-    def ext_moments(self, int_mean, int_var, ns=tf):
+    def ext_moments(self, int_mean, int_var, ns=tf.math):
         return ns.abs(int_mean), int_var
 
 class Dist(LogBase):

@@ -1,5 +1,5 @@
 """
-Base class for a forward model whose parameters are to be fitted
+VABY - Base class for a forward model whose parameters are to be fitted
 """
 import pkg_resources
 import collections
@@ -68,12 +68,24 @@ class Model(LogBase):
         ModelOption("t0", "Time offset for first volume", type=float, default=0.0),
     ]
 
-    def __init__(self, data_model, **options):
+    def __init__(self, data_model, **kwargs):
         LogBase.__init__(self)
         self.data_model = data_model
         self.params = []
         for option in self.OPTIONS:
-            setattr(self, option.attr_name, options.get(option.attr_name, option.default))
+            setattr(self, option.attr_name, kwargs.get(option.attr_name, option.default))
+
+    def log_config(self, log=None):
+        """
+        Write model configuration to a log stream
+        
+        :param: log Optional logger to use - defaults to class instance logger
+        """
+        if log is None:
+            log = self.log
+        log.info("Model: %s", str(self))
+        for option in self.OPTIONS:
+            log.info(" - %s: %s", option.desc, str(getattr(self, option.attr_name)))
 
     @property
     def nparams(self):
@@ -119,7 +131,7 @@ class Model(LogBase):
         :return: [VxSxB] tensor containing model output at the specified time values
                  for each voxel, and each sample (set of parameter values).
         """
-        raise NotImplementedError("evaluate")
+        raise NotImplementedError()
 
     def test_data(self, tpts, params_map):
         """
@@ -171,15 +183,3 @@ class Model(LogBase):
                 return clean, noisy
             else:
                 return clean
-
-    def log_config(self, log=None):
-        """
-        Write model configuration to a log stream
-        
-        :param: log Optional logger to use - defaults to class instance logger
-        """
-        if log is None:
-            log = self.log
-        log.info("Model: %s", str(self))
-        for option in self.OPTIONS:
-            log.info(" - %s: %s", option.desc, str(getattr(self, option.attr_name)))

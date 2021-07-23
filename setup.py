@@ -97,6 +97,12 @@ KWARGS = {
             "poly=vaby.models.misc:PolyModel",
         ],
     },
+    'classifiers' : [
+        'Intended Audience :: Science/Research',
+        'Programming Language :: Python :: 3',
+        'Topic :: Scientific/Engineering :: Bio-Informatics',
+        'License :: OSI Approved :: Apache Software License',
+    ],
 }
 
 setup(**KWARGS)

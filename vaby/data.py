@@ -9,11 +9,47 @@ import numpy as np
 import nibabel as nib
 from scipy import sparse
 
-from .utils import LogBase
+from .utils import LogBase, NP_DTYPE
 
 class DataModel(LogBase):
     """
     Encapsulates information about the data volume being modelled
+
+    Two spaces are defined: 
+    
+     - Voxel space which is a volumetric space in which the measured
+       data is defined
+     - Model space which defines a set of *nodes* on which the data is modelled
+       and which may be volumetric, surface based or a combination of both.
+       Model space may be divided into structures (e.g. WM/GM, R/L hemispheres)
+       with each structure modelled in a different way. The definition of model
+       space also includes the mapping between nodes and voxels.
+       
+    Measured data
+    -------------
+
+    :ivar data_vol: Measured data as a 4D volume
+    :ival shape: List containing 3D shape of measured data
+    :ival n_tpts: Number of timepoints in data
+    :ival mask_vol: Binary mask as a 3D volume. If none provided, a simple
+          array of ones matching the data will be generate
+    :ivar data: Measured data as a 2D array (voxels, timepoints). If
+          a mask is provided only masked voxels are included
+    :ival n_voxels: Number of voxels in the data that are included the mask
+    :ival voxel_sizes: Sizes of voxels in mm as a sequence of 3 values
+
+    :param data: Measured data as a filename, Numpy array or Nifti image
+    :param mask: Optional mask as a filename, Numpy array or Nifti image
+    :param voxel_sizes: Voxel sizes as sequence of 3 values in mm. For use
+           when the data is supplied as a Numpy array (not a Nifti image)
+    :param model_space: Sequence of dictionaries defining the structures
+           in model space. Keys are ``name``: Structure name, ``type``:
+           ``volume`` or ``surface``, ``data`` : Filename or Numpy array.
+           For a volume, this should be a mask compatible with the measured
+           data defining the voxels that should be treated as nodes. For
+           a surface this should be a GIFTI geometry file defining the
+           surface nodes. If not specified, a volume model space is
+           created matched with the measured data and mask.
 
     This includes its overall dimensions, mask (if provided), 
     and neighbouring voxel lists
@@ -22,67 +58,55 @@ class DataModel(LogBase):
     def __init__(self, data, mask=None, **kwargs):
         LogBase.__init__(self)
 
-        self.nii, self.data_vol = self._get_data(data)
+        ### Data space
+        self.nii, self.data_vol = self._load_data(data)
         while self.data_vol.ndim < 4:
             self.data_vol = self.data_vol[np.newaxis, ...]
 
         self.shape = list(self.data_vol.shape)[:3]
         self.n_tpts = self.data_vol.shape[3]
-        self.data_flattened = self.data_vol.reshape(-1, self.n_tpts)
+        self.voxel_sizes = self.nii.header['pixdim'][1:4]
 
         # If there is a mask load it and use it to mask the data
         if mask is not None:
-            _mask_nii, self.mask_vol = self._get_data(mask)
+            _mask_nii, self.mask_vol = self._load_data(mask)
             if self.shape != list(self.mask_vol.shape):
                 raise ValueError("Mask has different shape to main data: %s vs %s" % (self.shape, self.mask_vol.shape))
-            self.mask_flattened = self.mask_vol.flatten()
-            self.data_flattened = self.data_flattened[self.mask_flattened > 0]
         else:
-            self.mask_vol = np.ones(self.shape)
-            self.mask_flattened = self.mask_vol.flatten()
+            self.mask_vol = np.ones(self.shape, dtype=np.int)
 
-        self.n_unmasked_voxels = self.data_flattened.shape[0]
-        self.n_nodes = self.n_unmasked_voxels
+        self.data_flat = self.data_vol[self.mask_vol > 0]
+        self.n_voxels = self.data_flat.shape[0]
+        self._calc_adjacency_matrix()
+
+        ### Model space
+        model_structures = kwargs.get("model_structures", None)
+        if model_structures is None:
+            self.model_structures = [{
+                "name" : "voxels",
+                "type" : "volume",
+                "size" : self.n_voxels
+            },]
+            self.n_nodes = self.n_voxels
+        else:
+            for structure in model_structures:
+                self.log.info("Creating model space structure: %s" % structure["name"])
+                raise NotImplementedError()
 
         if kwargs.get("initial_posterior", None):
             self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
         else:
             self.post_init = None
 
-        self._calc_adjacency_matrix()
         self._calc_laplacian()
-
-    def _calc_laplacian(self):
-        """
-        Laplacian matrix. Note the sign convention is negatives
-        on the diagonal, and positive values off diagonal. 
-        """
-
-        # Set the laplacian here 
-        lap = self.adj_matrix.todok(copy=True)
-        lap[np.diag_indices(lap.shape[0])] = -lap.sum(1).T
-        assert lap.sum(1).max() == 0, 'Unweighted Laplacian matrix'
-        self.laplacian = lap.tocoo()
-
-    def nodes_to_voxels_ts(self, tensor, pv_sum=True):
-        return tensor
-
-    def nodes_to_voxels(self, tensor, pv_sum=True):
-        return tensor
-
-    def voxels_to_nodes(self, tensor, pv_sum=True):
-        return tensor
-
-    def voxels_to_nodes_ts(self, tensor, pv_sum=True):
-        return tensor
 
     def _calc_adjacency_matrix(self):
         """
         Generate adjacency matrix for voxel nearest neighbours.
+
         Note the result will be a square sparse COO matrix of size 
-        (n_unmasked voxels), indexed according to voxels in the mask
-        (so index 0 refers to the first un-masked voxel). 
-        
+        n_voxels so index 0 refers to the first un-masked voxel.
+
         These are required for spatial priors and in practice do not
         take long to calculate so we provide them as a matter of course
         """
@@ -139,11 +163,33 @@ class DataModel(LogBase):
 
         self.adj_matrix = sparse.coo_matrix(
             values,
-            shape=2*[self.n_unmasked_voxels], 
+            shape=2*[self.n_voxels], 
             dtype=np.float32
         )
 
-        assert not (self.adj_matrix.tocsr()[np.diag_indices(self.n_unmasked_voxels)] != 0).max()
+        assert not (self.adj_matrix.tocsr()[np.diag_indices(self.n_voxels)] != 0).max()
+
+    def _calc_laplacian(self):
+        """
+        Laplacian matrix. Note the sign convention is negatives
+        on the diagonal, and positive values off diagonal. 
+        """
+        lap = self.adj_matrix.todok(copy=True)
+        lap[np.diag_indices(lap.shape[0])] = -lap.sum(1).T
+        assert lap.sum(1).max() == 0, 'Unweighted Laplacian matrix'
+        self.laplacian = lap.tocoo()
+
+    def nodes_to_voxels_ts(self, tensor, pv_sum=True):
+        return tensor
+
+    def nodes_to_voxels(self, tensor, pv_sum=True):
+        return tensor
+
+    def voxels_to_nodes(self, tensor, pv_sum=True):
+        return tensor
+
+    def voxels_to_nodes_ts(self, tensor, pv_sum=True):
+        return tensor
 
     def nifti_image(self, data):
         """
@@ -155,7 +201,7 @@ class DataModel(LogBase):
         ndata = np.zeros(shape, dtype=np.float)
         ndata[self.mask_vol > 0] = data
         return nib.Nifti1Image(ndata, None, header=self.nii.header)
-            
+
     def posterior_data(self, mean, cov):
         """
         Get voxelwise data for the full posterior
@@ -168,8 +214,8 @@ class DataModel(LogBase):
         covariance is not being inferred some or all of the covariances
         will be zero.
         """
-        if cov.shape[0] != self.n_unmasked_voxels or mean.shape[0] != self.n_unmasked_voxels:
-            raise ValueError("Posterior data has %i voxels - inconsistent with data model containing %i unmasked voxels" % (cov.shape[0], self.n_unmasked_voxels))
+        if cov.shape[0] != self.n_voxels or mean.shape[0] != self.n_voxels:
+            raise ValueError("Posterior data has %i voxels - inconsistent with data model containing %i unmasked voxels" % (cov.shape[0], self.n_voxels))
 
         num_params = mean.shape[1]
         vols = []
@@ -181,15 +227,54 @@ class DataModel(LogBase):
         vols.append(np.ones(mean.shape[0]))
         return np.array(vols).transpose((1, 0))
 
-    def _get_data(self, data):
+    def get_voxel_data(self, data, **kwargs):
+        """
+        Get data in voxel space
+        
+        The data must be compatible with the main voxel data set. If it is
+        a volume, it must have the same volumetric shape. If there is a mask,
+        it will be applied to the volume. If it is a flattened array it must
+        match the flattened masked data array.
+        
+        :param data: Either a string containing the filename of a supported file, a Nibabel image or a Numpy array
+        :return: Numpy array shape [n_voxels, n_tpts] or [n_voxels] if not a timeseries
+        """
+        nii, vol = self._load_data(data)
+
+        if vol.ndim >= 3:
+            # If 3d/4d volume, use the mask to flatten it provided the shape is correct
+            if self.shape != list(vol.shape):
+                raise ValueError("get_voxel_data: Data volume has different shape to main data: %s vs %s" % (self.shape, vol.shape))
+            data_flat = vol[self.mask_vol > 0]
+        else:
+            # If 1d/2d, first dim should correspond to the the number of voxels
+            if self.n_voxels != vol.shape[0]:
+                raise ValueError("get_voxel_data: Data number of voxels does not match main data: %s vs %s" % (self.n_voxels, vol.shape[0]))
+            data_flat = vol
+    
+        if nii is not None:
+            voxel_sizes = nii.header['pixdim'][1:4]
+            if not np.allclose(voxel_sizes, self.voxel_sizes):
+                self.log.warn("get_voxel_data: Data voxel sizes does not match main data: %s vs %s", self.voxel_sizes, voxel_sizes)
+
+        return data_flat
+
+    def _load_data(self, data):
         if isinstance(data, six.string_types):
             nii = nib.load(data)
-            data_vol = nii.get_data()
+            if data.endswith(".nii") or data.endswith(".nii.gz"):
+                data_vol = nii.get_fdata()
+            elif data.endswith(".gii"):
+                # FIXME
+                raise NotImplementedError()
             self.log.info("Loaded data from %s", data)
+        elif isinstance(data, nib.Nifti1Image):
+            data_vol = data.get_fdata()
+            nii = data
         else:
-            nii = nib.Nifti1Image(data, np.identity(4))
             data_vol = data
-        return nii, data_vol
+            nii = None
+        return nii, data_vol.astype(NP_DTYPE)
 
     def _get_posterior_data(self, post_data):
         if isinstance(post_data, six.string_types):
@@ -224,8 +309,8 @@ class DataModel(LogBase):
             raise ValueError("Posterior input file '%s' has %i volumes - not consistent with upper triangle of square matrix" % (fname, nvols))
         self.log.info("Posterior image contains %i parameters", n_params)
         
-        cov = np.zeros((self.n_unmasked_voxels, n_params, n_params), dtype=np.float32)
-        mean = np.zeros((self.n_unmasked_voxels, n_params), dtype=np.float32)
+        cov = np.zeros((self.n_voxels, n_params, n_params), dtype=np.float32)
+        mean = np.zeros((self.n_voxels, n_params), dtype=np.float32)
         vol_idx = 0
         for row in range(n_params):
             for col in range(row+1):

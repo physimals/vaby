@@ -1,10 +1,10 @@
 """
-Miscellaneous models mostly for testing
+VABY - Miscellaneous models mostly for testing
 """
 import tensorflow as tf
 
 from vaby import __version__
-from vaby.model import Model
+from vaby.model import Model, ModelOption
 from vaby.parameter import get_parameter
 
 class ConstantModel(Model):
@@ -15,7 +15,8 @@ class ConstantModel(Model):
     def __init__(self, data_model, **options):
         Model.__init__(self, data_model, **options)
         self.params += [
-            get_parameter("mu", dist="Normal", mean=0.0,
+            get_parameter("mu", desc="Constant signal",
+                          dist="Normal", mean=0.0,
                           prior_var=1e6, post_var=1.0, 
                           **options),
         ]
@@ -31,12 +32,15 @@ class PolyModel(Model):
     Model which generates a signal from a polynomial
     """
 
+    OPTIONS = Model.OPTIONS + [
+        ModelOption("degree", "Maximum power degree in the polynomial", type=int, default=2),
+    ]
+
     def __init__(self, data_model, **options):
         Model.__init__(self, data_model, **options)
-        self._degree = options.get("degree", 2)
-        for idx in range(self._degree+1):
+        for idx in range(self.degree+1):
             self.params.append(
-                get_parameter("c%i" % idx, 
+                get_parameter(f"c%(idx)i" % idx, desc=f"Coefficient of x^%(idx)i",
                               dist="Normal", mean=0.0,
                               prior_var=1e6, post_var=1.0, 
                               **options),
@@ -44,7 +48,7 @@ class PolyModel(Model):
 
     def evaluate(self, params, tpts):
         ret = None
-        for idx in range(self._degree):
+        for idx in range(self.degree):
             c = params[idx]
             contrib = c * tf.pow(tpts, idx)
             if ret is None:

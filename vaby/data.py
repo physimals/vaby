@@ -54,7 +54,7 @@ class Volume(DataStructure):
     """
     def __init__(self, vol_data=None, mask=None, nii=None, voxel_sizes=None, **kwargs):
         DataStructure.__init__(self)
-        self.log.info("Volumetric data structure:\n")
+        self.log.info("Volumetric data structure:")
         self.voxel_sizes = voxel_sizes
 
         if vol_data is None and nii is None:
@@ -69,11 +69,14 @@ class Volume(DataStructure):
             self.vol_data = self.vol_data[..., np.newaxis]
         self.shape = list(self.vol_data.shape[:3])
         self.n_tpts = self.vol_data.shape[3]
-        self.log.info(" - 3D shape %s, %i volumes\n", self.shape, self.n_tpts)
+        self.log.info(" - 3D shape %s, %i volumes", self.shape, self.n_tpts)
 
         if mask is None:
-            self.log.info(" - No mask supplied\n")
+            self.log.info(" - No mask supplied")
             mask = np.ones(self.shape)
+        elif isinstance(mask, six.string_types):
+            mask = nib.load(mask).get_fdata().astype(np.int)
+
         self.mask_vol = mask
         if self.shape != list(self.mask_vol.shape):
             raise ValueError("Mask has different shape to data: %s vs %s" % (self.shape, self.mask_vol.shape))
@@ -261,7 +264,7 @@ class DataModel(LogBase):
     and neighbouring voxel lists
     """
 
-    def __init__(self, data, mask=None, **kwargs):
+    def __init__(self, data, **kwargs):
         LogBase.__init__(self)
 
         ### Data space

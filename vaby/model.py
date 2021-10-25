@@ -72,7 +72,7 @@ class Model(LogBase):
         LogBase.__init__(self)
         self.data_model = data_model
         self.params = []
-        for option in self.OPTIONS:
+        for option in type(self).OPTIONS:
             setattr(self, option.attr_name, kwargs.get(option.attr_name, option.default))
 
     def log_config(self, log=None):

@@ -82,7 +82,7 @@ class Volume(DataStructure):
             raise ValueError("Mask has different shape to data: %s vs %s" % (self.shape, self.mask_vol.shape))
         self.data_flat = self.vol_data[self.mask_vol > 0]
         self.size = self.data_flat.shape[0]
-        self.log.info(" - Masked data contains %i voxels\n", self.size)
+        self.log.info(" - Masked data contains %i voxels", self.size)
         if nii is not None:
             self.nii = nii
             self.voxel_sizes = self.nii.header['pixdim'][1:4]
@@ -90,10 +90,9 @@ class Volume(DataStructure):
             if self.voxel_sizes is None:
                 self.log.warning("Voxel sizes not provided for Numpy array input - assuming 1mm isotropic")
                 self.voxel_sizes = [1.0, 1.0, 1.0]
-            else:
-                self.log.info(" - Voxel sizes: %s\n", self.voxel_sizes)
             affine = np.diag(list(self.voxel_sizes) + [1.0,])
             self.nii = nib.Nifti1Image(self.vol_data, affine)
+        self.log.info(" - Voxel sizes: %s", self.voxel_sizes)
 
         self._calc_adjacency_matrix()
         self._calc_laplacian()
@@ -237,7 +236,6 @@ class DataModel(LogBase):
     Measured data
     -------------
 
-    :ivar vol_data: Measured data as a 4D volume
     :ival shape: List containing 3D shape of measured data
     :ival n_tpts: Number of timepoints in data
     :ival mask_vol: Binary mask as a 3D volume. If none provided, a simple

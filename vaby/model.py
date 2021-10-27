@@ -85,7 +85,10 @@ class Model(LogBase):
             log = self.log
         log.info("Model: %s", str(self))
         for option in self.OPTIONS:
-            log.info(" - %s: %s", option.desc, str(getattr(self, option.attr_name)))
+            value = getattr(self, option.attr_name)
+            if isinstance(value, np.ndarray):
+                value = "Numpy array shape %s" % str(value.shape)
+            log.info(" - %s: %s", option.desc, str(value))
 
     @property
     def nparams(self):

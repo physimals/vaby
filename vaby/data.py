@@ -275,6 +275,10 @@ class DataModel(LogBase):
         self.adj_matrix = self.data_space.adj_matrix
         self.laplacian = self.data_space.laplacian
 
+        # Compatibility
+        self.data_flattened = self.data_flat
+        self.n_unmasked_voxels = self.n_voxels
+
         ### Model space
         model_structures = kwargs.get("model_structures", None)
         if model_structures is None:

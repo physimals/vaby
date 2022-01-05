@@ -96,6 +96,9 @@ KWARGS = {
             "constant=vaby.models.misc:ConstantModel",
             "poly=vaby.models.misc:PolyModel",
         ],
+        'console_scripts' : [
+            "vaby=vaby.main:main",
+        ],
     },
     'classifiers' : [
         'Intended Audience :: Science/Research',

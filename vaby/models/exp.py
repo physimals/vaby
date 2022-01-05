@@ -12,9 +12,10 @@ class MultiExpModel(Model):
     Exponential decay with multiple independent decay rates and amplitudes
     """
 
-    OPTIONS = Model.OPTIONS + [
-        ModelOption("num_exps", "Number of exponentials", type=int, default=1),
-    ]
+    def options(self):
+        return Model.options(self) + [
+            ModelOption("num_exps", "Number of exponentials", type=int, default=1),
+        ]   
 
     def __init__(self, data_model, **options):
         Model.__init__(self, data_model, **options)
@@ -30,7 +31,6 @@ class MultiExpModel(Model):
                               prior_var=1e6, post_var=1.5,
                               **options),
             ]
-
 
     def _init_amp(self, _param, _t, data):
         return tf.reduce_max(data, axis=1) / self.num_exps, None
@@ -54,8 +54,6 @@ class ExpModel(MultiExpModel):
     """
     Single exponential decay model
     """
-    OPTIONS = Model.OPTIONS
-
     def __init__(self, data_model, **options):
         MultiExpModel.__init__(self, data_model, num_exps=1, **options)
 
@@ -66,8 +64,6 @@ class BiExpModel(MultiExpModel):
     """
     Exponential decay with two independent decay rates and amplitudes
     """
-    OPTIONS = Model.OPTIONS
-    
     def __init__(self, data_model, **options):
         MultiExpModel.__init__(self, data_model, num_exps=2, **options)
 

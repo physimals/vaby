@@ -32,9 +32,11 @@ class PolyModel(Model):
     Model which generates a signal from a polynomial
     """
 
-    OPTIONS = Model.OPTIONS + [
-        ModelOption("degree", "Maximum power degree in the polynomial", type=int, default=2),
-    ]
+    @staticmethod
+    def options():
+        return Model.options() + [
+            ModelOption("degree", "Maximum power degree in the polynomial", type=int, default=2),
+        ]   
 
     def __init__(self, data_model, **options):
         Model.__init__(self, data_model, **options)

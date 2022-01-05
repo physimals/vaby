@@ -3,7 +3,9 @@ VABY - Data model
 """
 import math
 import collections
+import os
 from nibabel import volumeutils
+from types import SimpleNamespace
 
 import six
 import numpy as np
@@ -17,9 +19,6 @@ def get_data_structure(data, **kwargs):
     Factory method to return an instance of DataStructure
     
     :param data: Source of data, either filename, Numpy array, Nifti1Image or GiftiImage
-    
-    Keyword args:
-     - 
     """
     if isinstance(data, six.string_types):
         data = nib.load(data)
@@ -32,96 +31,154 @@ def get_data_structure(data, **kwargs):
         return Surface(gii=data, **kwargs)
 
 class DataStructure(LogBase):
+    """"
+    A data structure
+    
+    Each data structure has the following attributes:
+     - size: Total number of independent nodes in the structure (e.g. surface nodes, unmasked voxels)
+     - adj_matrix: Sparse matrix dimension (size, size) containing 1 where nodes are regarded as connected, 0 otherwise
+     - laplacian: Sparse matrix dimension (size, size) containing Laplacian for spatial smoothing
+     - file_ext: Standard extension for saved files (e.g. .nii.gz or .gii)
     """
-    Single data structure, volumetric or surface
-    """
-    def __init__(self):
+    def __init__(self, **kwargs):
         LogBase.__init__(self)
+        self.file_ext = kwargs.get("file_ext", "")
+        self.name = kwargs.get("name", "data")
+
+    def check_compatible(self, struc):
+        """
+        Check another supplied data structure represents the same underlying data space
+        """
+        if type(self) != type(struc):
+            raise ValueError("Data structure of type %s does not match structure of type %s" % (type(self), type(struc)))
+        
+        if self.size != struc.size:
+            raise ValueError("Data structure of size %i does not match structure of type %i" % (self.size, struc.size))
+
+    def load_data(self, data, **kwargs):
+        """
+        Get data from a file, Numpy array or Nibabel object and check it is compatible with this data space
+
+        :param data: Either a string containing the filename of a supported file, a Nibabel image or a Numpy array
+        :return: 1D or 2D Numpy array shape (size, [n_tpts]) containing loaded data
+        """
+        raise NotImplementedError()
+
+    def nibabel_image(self, data):
+        """
+        Generate a Nibabel image for arbitrary data defined in this data space
+
+        :param data: Data array defined in this data space, i.e. a 1D Numpy array
+                     or 2D array if multi-volume data
+        :return: Appropriate type of Nibabel image, e.g. nibabel.Nifti1Image
+        """
+        raise NotImplementedError()
+
+    def save_data(self, data, name, outdir="."):
+        self.nibabel_image(data).to_filename(os.path.join(outdir, name) + self.file_ext)
 
 class Volume(DataStructure):
     """
     A data volume with optional mask
 
-    Attributes:
-      - vol_data
-      - shape
-      - size
-      - n_tpts
-      - mask_vol
-      - data_flat
-      - nii
-      - voxel_sizes
+    Volume-specific attributes:
+      - shape: 3D shape of volume
+      - mask: 3D binary mask volume
+      - voxel_sizes: Voxel dimensions in mm
+      - srcdata.nii: Nibabel image of source data, if supplied as Nibabel image, None otherwise
+      - srcdata.vol: 3D or 4D Numpy array of source data used to create the structure
+      - srcdata.n_tpts: Number of timepoints in source data
+      - srcdata.flat: Masked source data as 2D Numpy array
     """
-    def __init__(self, vol_data=None, mask=None, nii=None, voxel_sizes=None, **kwargs):
-        DataStructure.__init__(self)
-        self.log.info("Volumetric data structure:")
-        self.voxel_sizes = voxel_sizes
+    def __init__(self, vol_data=None, mask=None, nii=None, voxel_sizes=None, file_ext=".nii.gz", **kwargs):
+        DataStructure.__init__(self, file_ext=file_ext, **kwargs)
+        self.log.info("Volumetric data structure: %s" % self.name)
+        self.log.info(" - File extension: %s" % self.file_ext)
 
+        # In principle we could create a structure without source data, but for now it's hard to see
+        # a reason why you'd want to do that
         if vol_data is None and nii is None:
-            raise ValueError("No data supplied - need either Numpy array or Nifti image")
+            raise ValueError("No source data supplied - need either Numpy array or Nifti image")
         elif vol_data is None:
             vol_data = nii.get_fdata().astype(np.float32)
 
+        # Use data supplied to define shape of structure
         if vol_data.ndim > 4:
-            raise ValueError("Data has too many dimensions: %i (max 4)" % vol_data.ndim)
-        self.vol_data = vol_data
-        while self.vol_data.ndim < 4:
-            self.vol_data = self.vol_data[..., np.newaxis]
-        self.shape = list(self.vol_data.shape[:3])
-        self.n_tpts = self.vol_data.shape[3]
-        self.log.info(" - 3D shape %s, %i volumes", self.shape, self.n_tpts)
+            raise ValueError("Source data has too many dimensions: %i (max 4)" % vol_data.ndim)
+        if vol_data.ndim == 1:
+            self.log.info(" - Source data is 1D - interpreting as single voxel timeseries")
 
+        while vol_data.ndim < 4:
+            vol_data = np.expand_dims(vol_data, -2)
+        self.shape = list(vol_data.shape[:3])
+        self.srcdata = SimpleNamespace()
+        self.srcdata.nii = nii
+        self.srcdata.vol = vol_data
+        self.srcdata.n_tpts = vol_data.shape[3]
+        self.log.info(" - Shape: %s (Source data contained %i volumes)", self.shape, self.srcdata.n_tpts)
+
+        # Handle mask if supplied
         if mask is None:
             self.log.info(" - No mask supplied")
             mask = np.ones(self.shape)
         elif isinstance(mask, six.string_types):
             mask = nib.load(mask).get_fdata().astype(np.int)
 
-        self.mask_vol = mask
-        if self.shape != list(self.mask_vol.shape):
-            raise ValueError("Mask has different shape to data: %s vs %s" % (self.shape, self.mask_vol.shape))
-        self.data_flat = self.vol_data[self.mask_vol > 0]
-        self.size = self.data_flat.shape[0]
-        self.log.info(" - Masked data contains %i voxels", self.size)
-        if nii is not None:
-            self.nii = nii
-            self.voxel_sizes = self.nii.header['pixdim'][1:4]
+        self.mask = mask
+        if self.shape != list(self.mask.shape):
+            raise ValueError("Mask has different 3D shape to data: %s vs %s" % (self.shape, self.mask.shape))
+        self.srcdata.flat = self.srcdata.vol[self.mask > 0]
+        self.size = self.srcdata.flat.shape[0]
+        self.log.info(" - Masked volume contains %i voxels", self.size)
+
+        # Handle voxel sizes
+        if self.srcdata.nii is not None:
+            self.voxel_sizes = self.srcdata.nii.header['pixdim'][1:4]
+        elif voxel_sizes is not None:
+            self.voxel_sizes = voxel_sizes
         else:
-            if self.voxel_sizes is None:
-                self.log.warning("Voxel sizes not provided for Numpy array input - assuming 1mm isotropic")
-                self.voxel_sizes = [1.0, 1.0, 1.0]
-            affine = np.diag(list(self.voxel_sizes) + [1.0,])
-            self.nii = nib.Nifti1Image(self.vol_data, affine)
+            self.log.warning("Voxel sizes not provided for Numpy array input - assuming 1mm isotropic")
+            self.voxel_sizes = [1.0, 1.0, 1.0]
         self.log.info(" - Voxel sizes: %s", self.voxel_sizes)
 
+        # Calculate adjacency matrix and Laplacian
         self._calc_adjacency_matrix()
         self._calc_laplacian()
-    
+
     def check_compatible(self, struc):
         """
-        Check the supplied data structure represents the same underlying data space
+        Check another supplied data structure represents the same underlying data space
         """
-        if type(self) != type(struc):
-            raise ValueError("Data structure of type %s does not match structure of type %s" % (type(self), type(struc)))
-        
+        DataStructure.check_compatible(self, struc)
+
         if self.shape != struc.shape:
-            raise ValueError("Data structures do not have matching shape: %s vs %s" % (self.shape, struc.shape))
+            raise ValueError("Volumetric data structures do not have matching shape: %s vs %s" % (self.shape, struc.shape))
 
         if not np.allclose(self.voxel_sizes, struc.voxel_sizes):
-            raise ValueError("Data structures do not have matching voxel sizes: %s vs %s" % (self.voxel_sizes, struc.voxel_sizes))
+            raise ValueError("Volumetric data structures do not have matching voxel sizes: %s vs %s" % (self.voxel_sizes, struc.voxel_sizes))
 
-    def nifti_image(self, data):
-        """
-        :param data: Data array defined in this data space, i.e. a 1D Numpy array
-                     or 2D array if multi-volume data
-        :return: nibabel.Nifti1Image
-        """
+        if not np.all(self.mask == struc.mask):
+            raise ValueError("Volumetric data structures do not have same mask")
+
+    def load_data(self, data, **kwargs):
+        data_struc = get_data_structure(data, **kwargs)
+        data_struc.check_compatible(self)
+        return data_struc.srcdata.flat
+
+    def nibabel_image(self, data):
         shape = self.shape
         if data.ndim > 1:
             shape = list(shape) + [data.shape[1]]
         ndata = np.zeros(shape, dtype=np.float)
-        ndata[self.mask_vol > 0] = data
-        return nib.Nifti1Image(ndata, None, header=self.nii.header)
+        ndata[self.mask > 0] = data
+        if self.srcdata.nii is not None:
+            return nib.Nifti1Image(ndata, None, header=self.srcdata.nii.header)
+        else:
+            if self.voxel_sizes is None:
+                self.log.warning("Voxel sizes not available - assuming 1mm isotropic")
+                self.voxel_sizes = [1.0, 1.0, 1.0]
+            affine = np.diag(list(self.voxel_sizes) + [1.0,])
+            return nib.Nifti1Image(ndata, affine)
 
     def _calc_adjacency_matrix(self):
         """
@@ -153,7 +210,7 @@ class Volume(DataStructure):
         for x in range(nx):
             for y in range(ny):
                 for z in range(nz):
-                    if self.mask_vol[x, y, z] > 0:
+                    if self.mask[x, y, z] > 0:
                         masked_indices[x, y, z] = voxel_idx
                         voxel_idx += 1
 
@@ -164,7 +221,7 @@ class Volume(DataStructure):
         for x in range(nx):
             for y in range(ny):
                 for z in range(nz):
-                    if self.mask_vol[x, y, z] > 0:
+                    if self.mask[x, y, z] > 0:
                         nns = []
                         if x > 0: add_if_unmasked(x-1, y, z, masked_indices, nns)
                         if x < nx-1: add_if_unmasked(x+1, y, z, masked_indices, nns)
@@ -186,7 +243,7 @@ class Volume(DataStructure):
 
         self.adj_matrix = sparse.coo_matrix(
             values,
-            shape=2*[self.size], 
+            shape=[self.size, self.size], 
             dtype=np.float32
         )
 
@@ -208,140 +265,122 @@ class Surface(DataStructure):
     """
 
     def __init__(self, gii, **kwargs):
+        """
+        :param gii: nibabel.Gifti1Image containing surface structure data
+        """
         DataStructure.__init__(self)
         self.gii = gii
         self._calc_adjacency_matrix()
         self._calc_laplacian()
 
+    def load_data(self, data, **kwargs):
+        raise NotImplementedError()
+
+    def nibabel_image(self, data):
+        raise NotImplementedError()
+        #for hemi, hslice in zip(data_model.projector.iter_hemis, 
+        #                        data_model.iter_hemi_slicers): 
+        #    d = sdata[hslice]
+        #    p = path_gen(name_base, hemi.side)
+        #    g = data_model.gifti_image(d, hemi.side)
+        #    nib.save(g, p)
+
     def _calc_adjacency_matrix(self):
-        pass
+        raise NotImplementedError()
 
     def _calc_laplacian(self):
-        pass
+        raise NotImplementedError()
+
+class CompositeDataStructure(DataStructure):
+    """
+    A data structure with multiple named parts
+
+    The adjacency and laplacian matrix are block-diagonal copies of the source structures with
+    zeros elsewhere (i.e. the separate structures are not considered to be connected)
+
+    Attributes:
+     - parts: Sequence of (name, DataStructure) instances
+    """
+
+    def __init__(self, parts, **kwargs):
+        """
+        :param parts: Sequence of (name, DataStructure) instances
+        """
+        DataStructure.__init__(self)
+        self.parts = parts
+        self.size = sum([p.size for p in parts])
+        self._calc_adjacency_matrix()
+        self._calc_laplacian()
+
+    def _calc_adjacency_matrix(self):
+        raise NotImplementedError()
+
+    def _calc_laplacian(self):
+        raise NotImplementedError()
+
+    def save_data(self, data, name, outdir="."):
+        for struct_name, struct in self.parts:
+            struct.save_data(data, name + "_" + struct_name, outdir)
 
 class DataModel(LogBase):
     """
-    Encapsulates information about the data volume being modelled
+    Encapsulates information about the physical structure of the source data and how it
+    is being modelled
 
     Two spaces are defined: 
-    
-     - Voxel space which is a volumetric space in which the measured
-       data is defined
-     - Model space which defines a set of *nodes* on which the data is modelled
-       and which may be volumetric, surface based or a combination of both.
-       Model space may be divided into structures (e.g. WM/GM, R/L hemispheres)
-       with each structure modelled in a different way. The definition of model
-       space also includes the mapping between nodes and voxels.
 
-    Measured data
-    -------------
-
-    :ival shape: List containing 3D shape of measured data
-    :ival n_tpts: Number of timepoints in data
-    :ival mask_vol: Binary mask as a 3D volume. If none provided, a simple
-          array of ones matching the data will be generate
-    :ivar data: Measured data as a 2D array (voxels, timepoints). If
-          a mask is provided only masked voxels are included
-    :ival n_voxels: Number of voxels in the data that are included the mask
-    :ival voxel_sizes: Sizes of voxels in mm as a sequence of 3 values
-
-    :param data: Measured data as a filename, Numpy array or Nifti image
-    :param mask: Optional mask as a filename, Numpy array or Nifti image
-    :param voxel_sizes: Voxel sizes as sequence of 3 values in mm. For use
-           when the data is supplied as a Numpy array (not a Nifti image)
-    :param model_space: Sequence of dictionaries defining the structures
-           in model space. Keys are ``name``: Structure name, ``type``:
-           ``volume`` or ``surface``, ``data`` : Filename or Numpy array.
-           For a volume, this should be a mask compatible with the measured
-           data defining the voxels that should be treated as nodes. For
-           a surface this should be a GIFTI geometry file defining the
-           surface nodes. If not specified, a volume model space is
-           created matched with the measured data and mask.
-
-    This includes its overall dimensions, mask (if provided), 
-    and neighbouring voxel lists
+    :ival data_space: DataStructure defining acquisition data space
+    :ival model_space: DataStructure defining modelling data space. This may be
+                       identical to data space, a different kind of space (e.g.
+                       surface), or a composite space containing multiple 
+                       independent structures.
     """
 
     def __init__(self, data, **kwargs):
         LogBase.__init__(self)
 
-        ### Data space
-        self.data_space = get_data_structure(data, **kwargs)
-        self.n_voxels = self.data_space.size
-        self.n_tpts = self.data_space.n_tpts
-        self.shape = self.data_space.shape
-        self.mask_vol = self.data_space.mask_vol
-        self.data_flat = self.data_space.data_flat
-        self.adj_matrix = self.data_space.adj_matrix
-        self.laplacian = self.data_space.laplacian
-
-        # Compatibility
-        self.data_flattened = self.data_flat
-        self.n_unmasked_voxels = self.n_voxels
+        ### Acquisition data space
+        self.data_space = get_data_structure(data, name="acquisition", **kwargs)
 
         ### Model space
         model_structures = kwargs.get("model_structures", None)
         if model_structures is None:
-            self.model_structures = [{
-                "name" : "voxels",
-                "type" : "volume",
-                "size" : self.data_space.size,
-                "shape" : self.data_space.shape,
-                "mask" : self.data_space.mask_vol,
-            },]
-            self.n_nodes = self.data_space.size
+            self.model_space = get_data_structure(data, name="model", **kwargs)
         else:
-            for structure in model_structures:
-                #self.log.info("Creating model space structure: %s" % structure["name"])
-                #nii, vol = self._load_data(structure["data"])
-                #structure["type"] = volume
-                #structure["shape"] = vol.shape
-                #structure["mask"] = mask_vol
-                #self.model_structures.append(structure)
-                raise NotImplementedError()
+            struc_list = []
+            for name, src in model_structures:
+                self.log.info("Creating model space structure: %s" % name)
+                if not isinstance(src, DataStructure):
+                    struc_list.append((name, get_data_structure(src)))
+                else:
+                    struc_list.append((name, src))
+            self.model_space = CompositeDataStructure(model_structures)
 
         if kwargs.get("initial_posterior", None):
-            self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
+            raise NotImplementedError()
+            #self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
         else:
             self.post_init = None
 
-    def nodes_to_voxels_ts(self, tensor, pv_sum=True):
+    def model_to_data(self, tensor, pv_sum=True):
+        """
+        Convert model space data into source data space
+
+        FIXME assuming spaces are the same
+        """
         return tensor
 
-    def nodes_to_voxels(self, tensor, pv_sum=True):
+    def data_to_model(self, tensor, pv_sum=True):
+        """
+        Convert source data space data into model space
+
+        FIXME assuming spaces are the same
+        """
         return tensor
-
-    def voxels_to_nodes(self, tensor, pv_sum=True):
-        return tensor
-
-    def voxels_to_nodes_ts(self, tensor, pv_sum=True):
-        return tensor
-
-    def nifti_image(self, data):
-        """
-        :return: A nibabel.Nifti1Image for some, potentially masked, output data
-        """
-        return self.data_space.nifti_image(data)
-
-    def get_voxel_data(self, data, **kwargs):
-        """
-        Get data in acquisition space
-        
-        The data must be compatible with the main voxelwise input data set. If it is
-        a volume, it must have the same volumetric shape. If there is a mask,
-        it will be applied to the volume. If it is a flattened array it must
-        match the flattened masked data array.
-        
-        :param data: Either a string containing the filename of a supported file, a Nibabel image or a Numpy array
-        :return: Numpy array shape [n_voxels, n_tpts] or [n_voxels] if not a timeseries
-        """
-        data_struc = get_data_structure(data, **kwargs)
-        data_struc.check_compatible(self.data_space)
-        return data_struc.data_flat
 
     def encode_posterior(self, mean, cov):
         """
-        :return: a voxelwise data array containing the mean and covariance for the posterior
+        Encode the posterior mean and covariance as a single timeseries
 
         We use the Fabber method of serializing the upper triangle of the
         covariance matrix concatentated with a column of means and
@@ -350,6 +389,8 @@ class DataModel(LogBase):
         Note that if some of the posterior is factorized or 
         covariance is not being inferred some or all of the covariances
         will be zero.
+
+        :return: a nodewise data array containing the mean and covariance for the posterior
         """
         if cov.shape[0] != self.n_nodes or mean.shape[0] != self.n_nodes:
             raise ValueError("Posterior data has %i nodes - inconsistent with data model containing %i unmasked voxels" % (cov.shape[0], self.n_voxels))

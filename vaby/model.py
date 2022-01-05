@@ -63,16 +63,18 @@ class Model(LogBase):
                       geometric relationship of the data being modelled
     :attr params:     Sequence of ``Parameter`` objects
     """
-    OPTIONS = [
-        ModelOption("dt", "Time separation between volumes", type=float, default=1.0),
-        ModelOption("t0", "Time offset for first volume", type=float, default=0.0),
-    ]
+
+    def options(self):
+        return [
+            ModelOption("dt", "Time separation between volumes", type=float, default=1.0),
+            ModelOption("t0", "Time offset for first volume", type=float, default=0.0),
+        ]
 
     def __init__(self, data_model, **kwargs):
         LogBase.__init__(self)
         self.data_model = data_model
         self.params = []
-        for option in type(self).OPTIONS:
+        for option in self.options():
             setattr(self, option.attr_name, kwargs.get(option.attr_name, option.default))
 
     def log_config(self, log=None):
@@ -84,7 +86,7 @@ class Model(LogBase):
         if log is None:
             log = self.log
         log.info("Model: %s", str(self))
-        for option in self.OPTIONS:
+        for option in self.options():
             value = getattr(self, option.attr_name)
             if isinstance(value, np.ndarray):
                 value = "Numpy array shape %s" % str(value.shape)
@@ -116,7 +118,8 @@ class Model(LogBase):
         :return: Either a 1D Numpy array of shape [n_tpts] or a 2D Numpy array of shape
                  [N, T] for nodewise timepoints
         """
-        return np.linspace(self.t0, self.t0+self.data_model.n_tpts*self.dt, num=self.data_model.n_tpts, endpoint=False)
+        n_tpts = self.data_model.data_space.srcdata.n_tpts
+        return np.linspace(self.t0, self.t0+n_tpts*self.dt, num=n_tpts, endpoint=False)
 
     def evaluate(self, params, tpts):
         """

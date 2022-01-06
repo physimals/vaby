@@ -345,7 +345,8 @@ class DataModel(LogBase):
         ### Model space
         model_structures = kwargs.get("model_structures", None)
         if model_structures is None:
-            self.model_space = get_data_structure(data, name="model", **kwargs)
+            self.log.info(" - Model space is same as acquisition space")
+            self.model_space = self.data_space
         else:
             struc_list = []
             for name, src in model_structures:

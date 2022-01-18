@@ -123,10 +123,10 @@ class Volume(DataStructure):
             mask = np.ones(self.shape)
         elif isinstance(mask, six.string_types):
             mask = nib.load(mask).get_fdata().astype(np.int)
+            if self.shape != list(mask.shape):
+                raise ValueError("Mask has different 3D shape to data: %s vs %s" % (self.shape, mask.shape))
 
         self.mask = mask
-        if self.shape != list(self.mask.shape):
-            raise ValueError("Mask has different 3D shape to data: %s vs %s" % (self.shape, self.mask.shape))
         self.srcdata.flat = self.srcdata.vol[self.mask > 0]
         self.size = self.srcdata.flat.shape[0]
         self.log.info(" - Masked volume contains %i voxels", self.size)
@@ -182,10 +182,13 @@ class Volume(DataStructure):
 
     def _calc_adjacency_matrix(self):
         """
-        Generate adjacency matrix for voxel nearest neighbours.
+        Calculate adjacency matrix for voxels
 
-        Note the result will be a square sparse COO matrix of size 
-        ``self.size`` so index 0 refers to the first un-masked voxel.
+        The adjacency matrix value at (x, y) is 1 if voxels x and y
+        are nearest neighbours, 0 otherwise. Voxel indices refer to
+        the masked, flattened array so 0 is the first unmasked voxel
+        and the result is a square sparse COO matrix of size
+        ``self.size``.
 
         These are required for spatial priors and in practice do not
         take long to calculate so we provide them as a matter of course
@@ -248,11 +251,22 @@ class Volume(DataStructure):
         )
 
         assert not (self.adj_matrix.tocsr()[np.diag_indices(self.size)] != 0).max()
+        print(self.adj_matrix.todense())
 
     def _calc_laplacian(self):
         """
-        Laplacian matrix. Note the sign convention is negatives
-        on the diagonal, and positive values off diagonal. 
+        Calculate Laplacian matrix.
+
+        This is a spatial smoothing operator used to implement spatial priors.
+        For a volume, off-diagonal elements (x, y) are 1 if voxels x and y are
+        nearest neighbourd, 0 otherwise. The diagonal elements are the negative
+        of the number of neighbours a voxel has. Voxel indices refer to
+        the masked, flattened array so 0 is the first unmasked voxel
+        and the result is a square sparse COO matrix of size
+        ``self.size``.
+
+        Note the sign convention is negatives on the diagonal, and positive values
+        off diagonal.
         """
         lap = self.adj_matrix.todok(copy=True)
         lap[np.diag_indices(lap.shape[0])] = -lap.sum(1).T
@@ -286,9 +300,26 @@ class Surface(DataStructure):
         #    nib.save(g, p)
 
     def _calc_adjacency_matrix(self):
+        """
+        Calculate adjacency matrix for surface nodes
+
+        The adjacency matrix value at (x, y) is 1 if nodes x and y
+        are directly connected by a surface edge, 0 otherwise. The
+        result is a square sparse COO matrix of size ``self.size``.
+        """
         raise NotImplementedError()
 
     def _calc_laplacian(self):
+        """
+        Calculate Laplacian matrix.
+
+        This is a spatial smoothing operator used to implement spatial priors.
+        For a surface this is a 'mesh laplacian'. The result is a square sparse
+        COO matrix of size ``self.size``.
+
+        Note the sign convention is negatives on the diagonal, and positive values
+        off diagonal.
+        """
         raise NotImplementedError()
 
 class CompositeDataStructure(DataStructure):

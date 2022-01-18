@@ -9,10 +9,12 @@ except ImportError:
 
 from .data import DataModel
 from .model import Model, get_model_class
+from .main import run
 
 __all__ = [   "__version__",
     "__timestamp__",
     "DataModel",
     "Model",
     "get_model_class",
+    "run",
 ]

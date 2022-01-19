@@ -4,7 +4,6 @@ VABY - Data model
 import math
 import collections
 import os
-from nibabel import volumeutils
 from types import SimpleNamespace
 
 import six
@@ -100,7 +99,9 @@ class Volume(DataStructure):
         if vol_data is None and nii is None:
             raise ValueError("No source data supplied - need either Numpy array or Nifti image")
         elif vol_data is None:
-            vol_data = nii.get_fdata().astype(np.float32)
+            vol_data = nii.get_fdata().astype(NP_DTYPE)
+        else:
+            vol_data = vol_data.astype(NP_DTYPE)
 
         # Use data supplied to define shape of structure
         if vol_data.ndim > 4:
@@ -120,7 +121,7 @@ class Volume(DataStructure):
         # Handle mask if supplied
         if mask is None:
             self.log.info(" - No mask supplied")
-            mask = np.ones(self.shape)
+            mask = np.ones(self.shape, dtype=np.int)
         elif isinstance(mask, six.string_types):
             mask = nib.load(mask).get_fdata().astype(np.int)
             if self.shape != list(mask.shape):
@@ -247,7 +248,7 @@ class Volume(DataStructure):
         self.adj_matrix = sparse.coo_matrix(
             values,
             shape=[self.size, self.size], 
-            dtype=np.float32
+            dtype=NP_DTYPE
         )
 
         assert not (self.adj_matrix.tocsr()[np.diag_indices(self.size)] != 0).max()
@@ -452,11 +453,11 @@ class DataModel(LogBase):
             n_params = int((math.sqrt(1+8*float(nvols)) - 3) / 2)
             nvols_recov = (n_params+1)*(n_params+2) / 2
             if nvols != nvols_recov:
-                raise ValueError("Posterior input file '%s' has %i volumes - not consistent with upper triangle of square matrix" % (fname, nvols))
+                raise ValueError("Posterior input has %i volumes - not consistent with upper triangle of square matrix" % nvols)
             self.log.info("Posterior image contains %i parameters", n_params)
             
-            cov = np.zeros((self.n_nodes, n_params, n_params), dtype=np.float32)
-            mean = np.zeros((self.n_nodes, n_params), dtype=np.float32)
+            cov = np.zeros((self.n_nodes, n_params, n_params), dtype=NP_DTYPE)
+            mean = np.zeros((self.n_nodes, n_params), dtype=NP_DTYPE)
             vol_idx = 0
             for row in range(n_params):
                 for col in range(row+1):

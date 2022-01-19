@@ -4,6 +4,8 @@
 doc/html
 dist/
 build/
+examples/*_out
+examples/*_latest
 *.egg-info
 _version.py
 

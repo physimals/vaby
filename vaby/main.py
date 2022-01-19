@@ -10,7 +10,8 @@ import sys
 import logging
 
 from .model import get_model_class
-from .utils import ArgumentParser, setup_logging, runtime
+from .utils import setup_logging, runtime
+from .cli import ArgumentParser
 from .data import DataModel
 
 from . import __version__

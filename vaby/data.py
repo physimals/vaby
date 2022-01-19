@@ -10,6 +10,12 @@ import six
 import numpy as np
 import nibabel as nib
 from scipy import sparse
+import tensorflow as tf
+
+try:
+    import toblerone
+except ImportError:
+    toblerone = None
 
 from .utils import LogBase, NP_DTYPE
 
@@ -43,6 +49,17 @@ class DataStructure(LogBase):
         LogBase.__init__(self)
         self.file_ext = kwargs.get("file_ext", "")
         self.name = kwargs.get("name", "data")
+
+    def get_projection(self, data_space):
+        """
+        Get the projections between this space and the data acquisition space
+
+        :param data_space: Volume defining the acquisition data space
+        :return: Tuple of callables (data_to_model, model_to_data) which may be called
+                 passing a tensor in data/model space and returning a tensor in model/data
+                 space
+        """
+        raise NotImplementedError()
 
     def check_compatible(self, struc):
         """
@@ -145,6 +162,16 @@ class Volume(DataStructure):
         # Calculate adjacency matrix and Laplacian
         self._calc_adjacency_matrix()
         self._calc_laplacian()
+
+    def _identity_projection(self, tensor, pv_sum):
+        return tensor
+
+    def get_projection(self, data_space):
+        try:
+            self.check_compatible(data_space)
+            return (self._identity_projection, self._identity_projection)
+        except:
+            raise NotImplementedError("Projection between different volume spaces")
 
     def check_compatible(self, struc):
         """
@@ -274,19 +301,43 @@ class Volume(DataStructure):
         assert lap.sum(1).max() == 0, 'Unweighted Laplacian matrix'
         self.laplacian = lap.tocoo()
 
-class Surface(DataStructure):
+class CorticalSurface(DataStructure):
     """
-    A surface data structure
+    A cortical surface data structure
+
+    This consists of one or two hemispheres defined by inner (white matter) and
+    outer (pial) surfaces. These two surfaces contain corresponding tri-meshes
+    that define triangular voxels each of which defines a node in the structure.
     """
 
-    def __init__(self, gii, **kwargs):
+    def __init__(self, left=None, right=None, **kwargs):
         """
-        :param gii: nibabel.Gifti1Image containing surface structure data
+        :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
+                     containing the white and pial surfaces for the left hemisphere
+        :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
+                     containing the white and pial surfaces for the right hemisphere
         """
         DataStructure.__init__(self)
-        self.gii = gii
+        if not toblerone:
+            raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
+
+        hemispheres = self._load_surfaces(left, right)
+        if not hemispheres:
+            raise ValueError("At least one hemisphere (eg LWS/LPS) required")
+
         self._calc_adjacency_matrix()
         self._calc_laplacian()
+
+    def _load_surfaces(self, left, right):
+        # FIXME for now Toblerone only supports creating Surface from file
+        # not from point/tri arrays
+        from toblerone.classes import Surface, Hemisphere
+        hemispheres = []
+        if left:
+            hemispheres.append(Hemisphere(Surface(left[0], "LWS"), Surface(left[1], "LPS"), 'L'))
+        if right:
+            hemispheres.append(Hemisphere(Surface(right[0], "RWS"), Surface(right[1], "RPS"), 'R'))
+        return hemispheres
 
     def load_data(self, data, **kwargs):
         raise NotImplementedError()
@@ -366,6 +417,8 @@ class DataModel(LogBase):
                        identical to data space, a different kind of space (e.g.
                        surface), or a composite space containing multiple 
                        independent structures.
+    :ival projector: Tuple of callables that can convert data between acquisition
+                     and model space.
     """
 
     def __init__(self, data, **kwargs):
@@ -389,6 +442,8 @@ class DataModel(LogBase):
                     struc_list.append((name, src))
             self.model_space = CompositeDataStructure(model_structures)
 
+        self.projector = self.model_space.get_projection(self.data_space)
+
         if kwargs.get("initial_posterior", None):
             raise NotImplementedError()
             #self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
@@ -398,18 +453,14 @@ class DataModel(LogBase):
     def model_to_data(self, tensor, pv_sum=True):
         """
         Convert model space data into source data space
-
-        FIXME assuming spaces are the same
         """
-        return tensor
+        return self.projector[0](tensor, pv_sum)
 
     def data_to_model(self, tensor, pv_sum=True):
         """
         Convert source data space data into model space
-
-        FIXME assuming spaces are the same
         """
-        return tensor
+        return self.projector[1](tensor, pv_sum)
 
     def encode_posterior(self, mean, cov):
         """
@@ -425,8 +476,8 @@ class DataModel(LogBase):
 
         :return: a nodewise data array containing the mean and covariance for the posterior
         """
-        if cov.shape[0] != self.n_nodes or mean.shape[0] != self.n_nodes:
-            raise ValueError("Posterior data has %i nodes - inconsistent with data model containing %i unmasked voxels" % (cov.shape[0], self.n_voxels))
+        if cov.shape[0] != self.model_space.size or mean.shape[0] != self.model_space.size:
+            raise ValueError("Posterior data has %i nodes - inconsistent with model containing %i nodes" % (cov.shape[0], self.model_space.size))
 
         num_params = mean.shape[1]
         vols = []
@@ -456,8 +507,8 @@ class DataModel(LogBase):
                 raise ValueError("Posterior input has %i volumes - not consistent with upper triangle of square matrix" % nvols)
             self.log.info("Posterior image contains %i parameters", n_params)
             
-            cov = np.zeros((self.n_nodes, n_params, n_params), dtype=NP_DTYPE)
-            mean = np.zeros((self.n_nodes, n_params), dtype=NP_DTYPE)
+            cov = np.zeros((self.model_space.size, n_params, n_params), dtype=NP_DTYPE)
+            mean = np.zeros((self.model_space.size, n_params), dtype=NP_DTYPE)
             vol_idx = 0
             for row in range(n_params):
                 for col in range(row+1):
@@ -468,7 +519,7 @@ class DataModel(LogBase):
                 mean[:, row] = post_data_arr[:, vol_idx]
                 vol_idx += 1
             if not np.all(post_data_arr[:, vol_idx] == 1):
-                raise ValueError("Posterior input file '%s' - last volume does not contain 1.0", fname)
+                raise ValueError("Posterior input file - last volume does not contain 1.0")
 
             self.log.info("Posterior mean shape: %s, cov shape: %s", mean.shape, cov.shape)
             return mean, cov

@@ -4,7 +4,7 @@ Tests of data structure classes
 import numpy as np
 import nibabel as nib
 
-from vaby.data import get_data_structure, Volume, Surface
+from vaby.data import Volume
 
 def test_volume_3d():
     SHAPE = [10, 10, 10]
@@ -12,10 +12,10 @@ def test_volume_3d():
     vol = Volume(vol_data)
     assert(list(vol.shape) == SHAPE)
     assert(vol.size == 1000)
-    assert(vol.n_tpts == 1)
-    assert(np.allclose(vol.mask_vol, np.ones(SHAPE, dtype=int)))
-    assert(np.allclose(vol.data_flat[..., 0], vol_data.flatten()))
-    assert(isinstance(vol.nii, nib.Nifti1Image))
+    assert(vol.srcdata.n_tpts == 1)
+    assert(np.allclose(vol.mask, np.ones(SHAPE, dtype=int)))
+    assert(np.allclose(vol.srcdata.flat[..., 0], vol_data.flatten()))
+    assert(isinstance(vol.srcdata.nii, nib.Nifti1Image))
     assert(np.allclose(vol.voxel_sizes, [1.0, 1.0, 1.0]))
 
 def test_volume_3d_masked():
@@ -25,10 +25,10 @@ def test_volume_3d_masked():
     vol = Volume(vol_data, mask=mask)
     assert(list(vol.shape) == SHAPE)
     assert(vol.size == np.count_nonzero(mask))
-    assert(vol.n_tpts == 1)
-    assert(np.allclose(vol.mask_vol, mask))
-    assert(np.allclose(vol.data_flat[..., 0], vol_data[mask == 1]))
-    assert(isinstance(vol.nii, nib.Nifti1Image))
+    assert(vol.srcdata.n_tpts == 1)
+    assert(np.allclose(vol.mask, mask))
+    assert(np.allclose(vol.srcdata.flat[..., 0], vol_data[mask == 1]))
+    assert(isinstance(vol.srcdata.nii, nib.Nifti1Image))
     assert(np.allclose(vol.voxel_sizes, [1.0, 1.0, 1.0]))
 
 def test_volume_3d_vox_sizes():
@@ -48,10 +48,10 @@ def test_volume_3d_nii():
     vol = Volume(nii=nii)
     assert(list(vol.shape) == SHAPE)
     assert(vol.size == 1000)
-    assert(vol.n_tpts == 1)
-    assert(np.allclose(vol.mask_vol, np.ones(SHAPE, dtype=int)))
-    assert(np.allclose(vol.data_flat[..., 0], vol_data.flatten()))
-    assert(vol.nii == nii)
+    assert(vol.srcdata.n_tpts == 1)
+    assert(np.allclose(vol.mask, np.ones(SHAPE, dtype=int)))
+    assert(np.allclose(vol.srcdata.flat[..., 0], vol_data.flatten()))
+    assert(vol.srcdata.nii == nii)
     assert(np.allclose(vol.voxel_sizes, VOXEL_SIZES))
 
 def test_volume_3d_nii_masked():
@@ -65,10 +65,10 @@ def test_volume_3d_nii_masked():
     vol = Volume(nii=nii, mask=mask)
     assert(list(vol.shape) == SHAPE)
     assert(vol.size == np.count_nonzero(mask))
-    assert(vol.n_tpts == 1)
-    assert(np.allclose(vol.mask_vol, mask))
-    assert(np.allclose(vol.data_flat[..., 0], vol_data[mask == 1]))
-    assert(vol.nii == nii)
+    assert(vol.srcdata.n_tpts == 1)
+    assert(np.allclose(vol.mask, mask))
+    assert(np.allclose(vol.srcdata.flat[..., 0], vol_data[mask == 1]))
+    assert(vol.srcdata.nii == nii)
     assert(np.allclose(vol.voxel_sizes, VOXEL_SIZES))
 
 def _categorize(vid, shape):
@@ -77,7 +77,6 @@ def _categorize(vid, shape):
     rowid = int(vid / shape[0])
     colid = vid % shape[0]
     edge_cats = [faceid in (0, shape[2]-1), rowid in (0, shape[1]-1), colid in (0, shape[0]-1)]
-    print(vid, faceid, rowid, colid, edge_cats)
     corner = sum(edge_cats) == 3
     edge = sum(edge_cats) == 2
     face = sum(edge_cats) == 1

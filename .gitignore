@@ -1,6 +1,8 @@
 *.pyc
 *.nii
 *.nii.gz
+*.gii
+*.h5
 doc/html
 dist/
 build/

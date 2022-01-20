@@ -5,6 +5,7 @@ import math
 import collections
 import os
 from types import SimpleNamespace
+from google.protobuf.reflection import ParseMessage
 
 import six
 import numpy as np
@@ -14,10 +15,11 @@ import tensorflow as tf
 
 try:
     import toblerone
+    import regtricks
 except ImportError:
     toblerone = None
 
-from .utils import LogBase, NP_DTYPE
+from .utils import LogBase, NP_DTYPE, TF_DTYPE
 
 def get_data_structure(data, **kwargs):
     """
@@ -33,7 +35,7 @@ def get_data_structure(data, **kwargs):
     elif isinstance(data, nib.Nifti1Image):
         return Volume(nii=data, **kwargs)
     elif isinstance(data, nib.GiftiImage):
-        return Surface(gii=data, **kwargs)
+        return CorticalSurface(**kwargs)
 
 class DataStructure(LogBase):
     """"
@@ -123,11 +125,14 @@ class Volume(DataStructure):
         # Use data supplied to define shape of structure
         if vol_data.ndim > 4:
             raise ValueError("Source data has too many dimensions: %i (max 4)" % vol_data.ndim)
-        if vol_data.ndim == 1:
-            self.log.info(" - Source data is 1D - interpreting as single voxel timeseries")
+        elif vol_data.ndim == 3:
+            self.log.info(" - Source data is 3D - interpreting as 3D volume")
+            vol_data = np.expand_dims(vol_data, -1)
+        elif vol_data.ndim != 4:
+            self.log.info(" - Source data is %iD - interpreting last dimension as timeseries"  % vol_data.ndim)
+            while vol_data.ndim < 4:
+                vol_data = np.expand_dims(vol_data, -2)
 
-        while vol_data.ndim < 4:
-            vol_data = np.expand_dims(vol_data, -2)
         self.shape = list(vol_data.shape[:3])
         self.srcdata = SimpleNamespace()
         self.srcdata.nii = nii
@@ -138,9 +143,9 @@ class Volume(DataStructure):
         # Handle mask if supplied
         if mask is None:
             self.log.info(" - No mask supplied")
-            mask = np.ones(self.shape, dtype=np.int)
+            mask = np.ones(self.shape, dtype=int)
         elif isinstance(mask, six.string_types):
-            mask = nib.load(mask).get_fdata().astype(np.int)
+            mask = nib.load(mask).get_fdata().astype(int)
             if self.shape != list(mask.shape):
                 raise ValueError("Mask has different 3D shape to data: %s vs %s" % (self.shape, mask.shape))
 
@@ -152,11 +157,13 @@ class Volume(DataStructure):
         # Handle voxel sizes
         if self.srcdata.nii is not None:
             self.voxel_sizes = self.srcdata.nii.header['pixdim'][1:4]
-        elif voxel_sizes is not None:
-            self.voxel_sizes = voxel_sizes
         else:
-            self.log.warning("Voxel sizes not provided for Numpy array input - assuming 1mm isotropic")
-            self.voxel_sizes = [1.0, 1.0, 1.0]
+            if voxel_sizes is not None:
+                self.voxel_sizes = voxel_sizes
+            else:
+                self.log.warning("Voxel sizes not provided for Numpy array input - assuming 1mm isotropic")
+                self.voxel_sizes = [1.0, 1.0, 1.0]
+            self.srcdata.nii = nib.Nifti1Image(self.srcdata.vol, np.diag(list(self.voxel_sizes) + [1.0]))
         self.log.info(" - Voxel sizes: %s", self.voxel_sizes)
 
         # Calculate adjacency matrix and Laplacian
@@ -279,7 +286,6 @@ class Volume(DataStructure):
         )
 
         assert not (self.adj_matrix.tocsr()[np.diag_indices(self.size)] != 0).max()
-        print(self.adj_matrix.todense())
 
     def _calc_laplacian(self):
         """
@@ -310,34 +316,83 @@ class CorticalSurface(DataStructure):
     that define triangular voxels each of which defines a node in the structure.
     """
 
-    def __init__(self, left=None, right=None, **kwargs):
+    def __init__(self, white, pial, **kwargs):
         """
         :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
                      containing the white and pial surfaces for the left hemisphere
         :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
                      containing the white and pial surfaces for the right hemisphere
         """
-        DataStructure.__init__(self)
-        if not toblerone:
+        DataStructure.__init__(self, **kwargs)
+        if toblerone is None:
             raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
 
-        hemispheres = self._load_surfaces(left, right)
-        if not hemispheres:
-            raise ValueError("At least one hemisphere (eg LWS/LPS) required")
+        if self.name not in ("L", "R"):
+            raise ValueError("For now, the names of cortical surfaces must be either 'L' or 'R'")
 
-        self._calc_adjacency_matrix()
-        self._calc_laplacian()
+        from toblerone.classes import Hemisphere, Surface
+        self.hemisphere = Hemisphere(Surface(white, self.name + "WS"), Surface(pial, self.name + "PS"), self.name)
+        self.size = self.hemisphere.n_points
+        self.projector = kwargs.get("projector", None)
+        self.proj_tensors = None
+        if isinstance(self.projector, str):
+            self.log.info(f"Loading projector from {self.projector}")
+            self.projector = toblerone.Projector.load(self.projector)
 
-    def _load_surfaces(self, left, right):
-        # FIXME for now Toblerone only supports creating Surface from file
-        # not from point/tri arrays
-        from toblerone.classes import Surface, Hemisphere
-        hemispheres = []
-        if left:
-            hemispheres.append(Hemisphere(Surface(left[0], "LWS"), Surface(left[1], "LPS"), 'L'))
-        if right:
-            hemispheres.append(Hemisphere(Surface(right[0], "RWS"), Surface(right[1], "RPS"), 'R'))
-        return hemispheres
+        self.adj_matrix = self.hemisphere.adjacency_matrix()
+        self.laplacian = self.hemisphere.mesh_laplacian()
+
+    def get_projection(self, data_space):
+        if self.projector is None:
+            self.log.info("Generating projector - this may take some time...")
+            self.projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
+            self.projector.save("vaby_proj.h5")
+            self.log.info("Projector generated")
+
+        if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
+            raise ValueError("Projector supplied is not defined on same image space as acquisition data")
+
+        if self.proj_tensors is None:
+            proj_matrices = {
+                "n2v" : self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
+                "n2v_noedge" : self.projector.surf2vol_matrix(edge_scale=False).astype(NP_DTYPE),
+                "v2n" : self.projector.vol2surf_matrix(edge_scale=True).astype(NP_DTYPE),
+                "v2n_noedge" : self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
+            }
+
+            if data_space.size!= proj_matrices["n2v"].shape[0]:
+                raise ValueError('Acquisition data size does not match projector')
+            #if self.projector.n_surf_nodes != n2v.shape[1]:
+            #    raise ValueError('Mask size does not match projector')
+
+            # Knock out voxels from projection matrices that are not in the mask
+            # and convert to sparse tensors
+            self.proj_tensors = {}
+            vox_inds = np.flatnonzero(data_space.mask)
+            for name, mat in proj_matrices.items():
+                if name.startswith("n2v"):
+                    masked_mat = mat.tocsr()[vox_inds, :].tocoo()
+                else:
+                    masked_mat = mat.tocsr()[:, vox_inds].tocoo()
+                self.proj_tensors[name] = tf.SparseTensor(
+                    indices=np.array([masked_mat.row, masked_mat.col]).T,
+                    values=masked_mat.data,
+                    dense_shape=masked_mat.shape,
+                )
+
+        def _surf2vol(tensor, pv_sum=False):
+            if pv_sum:
+                return tf.sparse.sparse_dense_matmul(self.proj_tensors["n2v"], tensor)
+            else:
+                return tf.sparse.sparse_dense_matmul(self.proj_tensors["n2v_noedge"], tensor)
+
+        def _vol2surf(tensor, pv_sum=False):
+            if pv_sum:
+                return tf.sparse.sparse_dense_matmul(self.proj_tensors["v2n"], tensor)
+            else:
+                return tf.sparse.sparse_dense_matmul(self.proj_tensors["v2n_noedge"], tensor)
+
+        return (_surf2vol, _vol2surf)
 
     def load_data(self, data, **kwargs):
         raise NotImplementedError()
@@ -351,59 +406,55 @@ class CorticalSurface(DataStructure):
         #    g = data_model.gifti_image(d, hemi.side)
         #    nib.save(g, p)
 
-    def _calc_adjacency_matrix(self):
-        """
-        Calculate adjacency matrix for surface nodes
-
-        The adjacency matrix value at (x, y) is 1 if nodes x and y
-        are directly connected by a surface edge, 0 otherwise. The
-        result is a square sparse COO matrix of size ``self.size``.
-        """
-        raise NotImplementedError()
-
-    def _calc_laplacian(self):
-        """
-        Calculate Laplacian matrix.
-
-        This is a spatial smoothing operator used to implement spatial priors.
-        For a surface this is a 'mesh laplacian'. The result is a square sparse
-        COO matrix of size ``self.size``.
-
-        Note the sign convention is negatives on the diagonal, and positive values
-        off diagonal.
-        """
-        raise NotImplementedError()
-
 class CompositeDataStructure(DataStructure):
     """
     A data structure with multiple named parts
 
     The adjacency and laplacian matrix are block-diagonal copies of the source structures with
-    zeros elsewhere (i.e. the separate structures are not considered to be connected)
+    zeros elsewhere (i.e. the separate structures are not considered to be connected).
 
     Attributes:
      - parts: Sequence of (name, DataStructure) instances
+     - slices: Slice object for each part to extract model nodes relevant to that part
     """
 
     def __init__(self, parts, **kwargs):
         """
-        :param parts: Sequence of (name, DataStructure) instances
+        :param parts: Sequence of DataStructure instances
         """
         DataStructure.__init__(self)
         self.parts = parts
         self.size = sum([p.size for p in parts])
-        self._calc_adjacency_matrix()
-        self._calc_laplacian()
+        self.slices = []
+        start = 0
+        for p in self.parts:
+            self.slices.append(slice(start, start+p.size))
+            start += p.size
+        self.projectors = []
+        self.adj_matrix = sparse.block_diag([p.adj_matrix for p in self.parts]).astype(NP_DTYPE)
+        self.laplacian = sparse.block_diag([p.laplacian for p in self.parts]).astype(NP_DTYPE)
 
-    def _calc_adjacency_matrix(self):
-        raise NotImplementedError()
+    def get_projection(self, data_space):
+        if not self.projectors:
+            self.projectors = [p.get_projection(data_space) for p in self.parts]
 
-    def _calc_laplacian(self):
-        raise NotImplementedError()
+        def model2data(tensor, pv_sum=False):
+            tensor_data = []
+            for proj, slc in zip(self.projectors, self.slices):
+                tensor_data.append(proj[0](tensor[slc, ...], pv_sum)) # [V, T]
+            return sum(tensor_data) # [V, T]
+
+        def data2model(tensor, pv_sum=False):
+            tensor_model = []
+            for proj in self.projectors:
+                tensor_model.append(proj[1](tensor, pv_sum)) # [w, T]
+            return tf.concat(tensor_model, axis=0) # [W, T]
+
+        return model2data, data2model
 
     def save_data(self, data, name, outdir="."):
-        for struct_name, struct in self.parts:
-            struct.save_data(data, name + "_" + struct_name, outdir)
+        for struct, slc in zip(self.parts, self.slices):
+            struct.save_data(data[slc, ...], name + "_" + struct.name, outdir)
 
 class DataModel(LogBase):
     """
@@ -418,7 +469,8 @@ class DataModel(LogBase):
                        surface), or a composite space containing multiple 
                        independent structures.
     :ival projector: Tuple of callables that can convert data between acquisition
-                     and model space.
+                     and model space. The first converts model space tensors to
+                     acquisition space, the second goes the other way.
     """
 
     def __init__(self, data, **kwargs):
@@ -434,13 +486,13 @@ class DataModel(LogBase):
             self.model_space = self.data_space
         else:
             struc_list = []
-            for name, src in model_structures:
+            for name, src in model_structures.items():
                 self.log.info("Creating model space structure: %s" % name)
                 if not isinstance(src, DataStructure):
-                    struc_list.append((name, get_data_structure(src)))
+                    struc_list.append((name, get_data_structure(**src)))
                 else:
                     struc_list.append((name, src))
-            self.model_space = CompositeDataStructure(model_structures)
+            self.model_space = CompositeDataStructure(struc_list)
 
         self.projector = self.model_space.get_projection(self.data_space)
 

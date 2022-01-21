@@ -21,21 +21,34 @@ except ImportError:
 
 from .utils import LogBase, NP_DTYPE, TF_DTYPE
 
-def get_data_structure(data, **kwargs):
+def get_data_structure(**kwargs):
     """
     Factory method to return an instance of DataStructure
     
-    :param data: Source of data, either filename, Numpy array, Nifti1Image or GiftiImage
+    Either the class name may be direcly specified using the 'type' kwarg, or
+    a data filename/object may be provided via the 'data' kwarg
     """
-    if isinstance(data, six.string_types):
-        data = nib.load(data)
+    if "type" in kwargs:
+        classname = kwargs.pop("type")
+        cls = globals().get(classname, None)
+        if cls is None:
+            raise ValueError("No such data structure: %s" % classname)
+        return cls(**kwargs)
+    elif "data" in kwargs:
+        data = kwargs["data"]
+        if isinstance(data, six.string_types):
+            data = nib.load(data)
 
-    if isinstance(data, np.ndarray):
-        return Volume(data, **kwargs)
-    elif isinstance(data, nib.Nifti1Image):
-        return Volume(nii=data, **kwargs)
-    elif isinstance(data, nib.GiftiImage):
-        return CorticalSurface(**kwargs)
+        if isinstance(data, np.ndarray):
+            return Volume(data, **kwargs)
+        elif isinstance(data, nib.Nifti1Image):
+            return Volume(nii=data, **kwargs)
+        #elif isinstance(data, nib.GiftiImage):
+        #    return SimpleSurface(gii=data, **kwargs)
+        else:
+            raise ValueError("Unable to create model structure from data type %s" % type(data))
+    else:
+        raise ValueError("Unable to create model structure - neither data nor structure type given")
 
 class DataStructure(LogBase):
     """"
@@ -54,10 +67,14 @@ class DataStructure(LogBase):
 
     def get_projection(self, data_space):
         """
-        Get the projections between this space and the data acquisition space
+        Get the projections between this space and the data acquisition space.
+
+        This method should only be called once for a given data space - hence any
+        expensive calculation of the projector can be done in the method (but ideally
+        not in the returned callables)
 
         :param data_space: Volume defining the acquisition data space
-        :return: Tuple of callables (data_to_model, model_to_data) which may be called
+        :return: Tuple of callables (model_to_data, data_to_model) which may be called
                  passing a tensor in data/model space and returning a tensor in model/data
                  space
         """
@@ -108,7 +125,7 @@ class Volume(DataStructure):
       - srcdata.n_tpts: Number of timepoints in source data
       - srcdata.flat: Masked source data as 2D Numpy array
     """
-    def __init__(self, vol_data=None, mask=None, nii=None, voxel_sizes=None, file_ext=".nii.gz", **kwargs):
+    def __init__(self, vol_data=None, mask=None, pv_vol=None, nii=None, voxel_sizes=None, file_ext=".nii.gz", **kwargs):
         DataStructure.__init__(self, file_ext=file_ext, **kwargs)
         self.log.info("Volumetric data structure: %s" % self.name)
         self.log.info(" - File extension: %s" % self.file_ext)
@@ -307,34 +324,72 @@ class Volume(DataStructure):
         assert lap.sum(1).max() == 0, 'Unweighted Laplacian matrix'
         self.laplacian = lap.tocoo()
 
+class PartialVolumes(Volume):
+    """
+    Volumetric structure in which every voxel has a partial volume
+
+    The source data is assumed to define the PVs unless a separate PV map is given.
+    The PVs of each voxel affect the projection of data onto the structure.
+    """
+    def __init__(self, pv_vol=None, **kwargs):
+        Volume.__init__(self, **kwargs)
+        if pv_vol is None:
+            if self.srcdata.n_tpts != 1:
+                raise ValueError("Partial volume map is 4D")
+
+            self.pvs = self.srcdata.flat
+        else:
+            if isinstance(pv_vol, str):
+                pv_vol = nib.load(pv_vol).get_fdata()
+            if list(pv_vol.shape) != list(self.shape):
+                raise ValueError("Partial volume map does not have the same shape as the underlying volume")
+
+            self.pvs = pv_vol[self.mask]
+
+    def get_projection(self, data_space):
+        try:
+            self.check_compatible(data_space)
+            def _model2data(tensor, pv_sum=False):
+                return tensor * self.pvs
+
+            def _data2model(tensor, pv_sum=False):
+                # FIXME how is this defined?
+                return tensor
+
+            return _model2data, _data2model
+        except:
+            raise NotImplementedError("Projection between different volume spaces")
+
 class CorticalSurface(DataStructure):
     """
     A cortical surface data structure
 
-    This consists of one or two hemispheres defined by inner (white matter) and
-    outer (pial) surfaces. These two surfaces contain corresponding tri-meshes
-    that define triangular voxels each of which defines a node in the structure.
+    This consists two surfaces, inner (white matter) and outer (pial). These surfaces
+    contain corresponding tri-meshes that define triangular voxels each of which represents
+    a node in the structure.
+
+    Multiple cortical surface structures can be combined in a CompositeStructure, e.g.
+    right and left hemispheres, potentially additionally with volumetric subcortical white matter
     """
 
-    def __init__(self, white, pial, **kwargs):
+    def __init__(self, white, pial, file_ext=".gii", **kwargs):
         """
         :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
                      containing the white and pial surfaces for the left hemisphere
         :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
                      containing the white and pial surfaces for the right hemisphere
         """
-        DataStructure.__init__(self, **kwargs)
+        DataStructure.__init__(self, file_ext=file_ext, **kwargs)
         if toblerone is None:
             raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
+        from toblerone.classes import Hemisphere, Surface
 
         if self.name not in ("L", "R"):
             raise ValueError("For now, the names of cortical surfaces must be either 'L' or 'R'")
 
-        from toblerone.classes import Hemisphere, Surface
         self.hemisphere = Hemisphere(Surface(white, self.name + "WS"), Surface(pial, self.name + "PS"), self.name)
         self.size = self.hemisphere.n_points
         self.projector = kwargs.get("projector", None)
-        self.proj_tensors = None
         if isinstance(self.projector, str):
             self.log.info(f"Loading projector from {self.projector}")
             self.projector = toblerone.Projector.load(self.projector)
@@ -345,52 +400,71 @@ class CorticalSurface(DataStructure):
     def get_projection(self, data_space):
         if self.projector is None:
             self.log.info("Generating projector - this may take some time...")
-            self.projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
-            self.projector.save("vaby_proj.h5")
+            projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
+            projector.save("vaby_proj.h5")
             self.log.info("Projector generated")
+        else:
+            if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
+                raise ValueError("Projector supplied is not defined on same image space as acquisition data")
+            projector = self.projector
 
-        if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
-            raise ValueError("Projector supplied is not defined on same image space as acquisition data")
+        proj_matrices = {
+            "n2v" : projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
+            "n2v_noedge" : projector.surf2vol_matrix(edge_scale=False).astype(NP_DTYPE),
+            "v2n" : projector.vol2surf_matrix(edge_scale=True).astype(NP_DTYPE),
+            "v2n_noedge" : projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
+        }
 
-        if self.proj_tensors is None:
-            proj_matrices = {
-                "n2v" : self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
-                "n2v_noedge" : self.projector.surf2vol_matrix(edge_scale=False).astype(NP_DTYPE),
-                "v2n" : self.projector.vol2surf_matrix(edge_scale=True).astype(NP_DTYPE),
-                "v2n_noedge" : self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
-            }
+        if data_space.size != proj_matrices["n2v"].shape[0]:
+            raise ValueError('Acquisition data size does not match projector')
 
-            if data_space.size!= proj_matrices["n2v"].shape[0]:
-                raise ValueError('Acquisition data size does not match projector')
-            #if self.projector.n_surf_nodes != n2v.shape[1]:
-            #    raise ValueError('Mask size does not match projector')
-
-            # Knock out voxels from projection matrices that are not in the mask
-            # and convert to sparse tensors
-            self.proj_tensors = {}
-            vox_inds = np.flatnonzero(data_space.mask)
-            for name, mat in proj_matrices.items():
-                if name.startswith("n2v"):
-                    masked_mat = mat.tocsr()[vox_inds, :].tocoo()
-                else:
-                    masked_mat = mat.tocsr()[:, vox_inds].tocoo()
-                self.proj_tensors[name] = tf.SparseTensor(
-                    indices=np.array([masked_mat.row, masked_mat.col]).T,
-                    values=masked_mat.data,
-                    dense_shape=masked_mat.shape,
-                )
+        # Knock out voxels from projection matrices that are not in the mask
+        # and convert to sparse tensors
+        proj_tensors = {}
+        vox_inds = np.flatnonzero(data_space.mask)
+        for name, mat in proj_matrices.items():
+            if name.startswith("n2v"):
+                masked_mat = mat.tocsr()[vox_inds, :].tocoo()
+            else:
+                masked_mat = mat.tocsr()[:, vox_inds].tocoo()
+            proj_tensors[name] = tf.SparseTensor(
+                indices=np.array([masked_mat.row, masked_mat.col]).T,
+                values=masked_mat.data,
+                dense_shape=masked_mat.shape,
+            )
 
         def _surf2vol(tensor, pv_sum=False):
+            is_vector = tf.rank(tensor) < 2
+            if is_vector:
+                tensor = tf.expand_dims(tensor, -1)
+
             if pv_sum:
-                return tf.sparse.sparse_dense_matmul(self.proj_tensors["n2v"], tensor)
+                proj = proj_tensors["n2v"]
             else:
-                return tf.sparse.sparse_dense_matmul(self.proj_tensors["n2v_noedge"], tensor)
+                proj = proj_tensors["n2v_noedge"]
+
+            print("_surf2vol: %s %s" % (proj.shape, tensor.shape))
+            ret = tf.sparse.sparse_dense_matmul(proj, tensor)
+            if is_vector:
+                ret = tf.reshape(ret, [-1])
+
+            return ret
 
         def _vol2surf(tensor, pv_sum=False):
+            is_vector = tf.rank(tensor) < 2
+            if is_vector:
+                tensor = tf.expand_dims(tensor, -1)
+
             if pv_sum:
-                return tf.sparse.sparse_dense_matmul(self.proj_tensors["v2n"], tensor)
+                proj = proj_tensors["v2n"]
             else:
-                return tf.sparse.sparse_dense_matmul(self.proj_tensors["v2n_noedge"], tensor)
+                proj = proj_tensors["v2n_noedge"]
+
+            ret = tf.sparse.sparse_dense_matmul(proj, tensor)
+            if is_vector:
+                ret = tf.reshape(ret, [-1])
+
+            return ret
 
         return (_surf2vol, _vol2surf)
 
@@ -398,15 +472,18 @@ class CorticalSurface(DataStructure):
         raise NotImplementedError()
 
     def nibabel_image(self, data):
-        raise NotImplementedError()
-        #for hemi, hslice in zip(data_model.projector.iter_hemis, 
-        #                        data_model.iter_hemi_slicers): 
-        #    d = sdata[hslice]
-        #    p = path_gen(name_base, hemi.side)
-        #    g = data_model.gifti_image(d, hemi.side)
-        #    nib.save(g, p)
+        if data.shape[0] != self.size:
+            raise ValueError("Incorrect data shape for surface")
 
-class CompositeDataStructure(DataStructure):
+        meta = {'Description': f'{self.name} cortex parameter estimates produced by vaby'}
+        arr = nib.gifti.GiftiDataArray(
+            data.astype(np.float32),
+            intent='NIFTI_INTENT_ESTIMATE',
+            datatype='NIFTI_TYPE_FLOAT32',
+            meta=meta)
+        return nib.GiftiImage(darrays=[arr])
+
+class CompositeStructure(DataStructure):
     """
     A data structure with multiple named parts
 
@@ -426,27 +503,25 @@ class CompositeDataStructure(DataStructure):
         self.parts = parts
         self.size = sum([p.size for p in parts])
         self.slices = []
-        start = 0
+        start_idx = 0
         for p in self.parts:
-            self.slices.append(slice(start, start+p.size))
-            start += p.size
-        self.projectors = []
+            self.slices.append(slice(start_idx, start_idx+p.size))
+            start_idx += p.size
         self.adj_matrix = sparse.block_diag([p.adj_matrix for p in self.parts]).astype(NP_DTYPE)
         self.laplacian = sparse.block_diag([p.laplacian for p in self.parts]).astype(NP_DTYPE)
 
     def get_projection(self, data_space):
-        if not self.projectors:
-            self.projectors = [p.get_projection(data_space) for p in self.parts]
+        projectors = [p.get_projection(data_space) for p in self.parts]
 
         def model2data(tensor, pv_sum=False):
             tensor_data = []
-            for proj, slc in zip(self.projectors, self.slices):
+            for proj, slc in zip(projectors, self.slices):
                 tensor_data.append(proj[0](tensor[slc, ...], pv_sum)) # [V, T]
             return sum(tensor_data) # [V, T]
 
         def data2model(tensor, pv_sum=False):
             tensor_model = []
-            for proj in self.projectors:
+            for proj in projectors:
                 tensor_model.append(proj[1](tensor, pv_sum)) # [w, T]
             return tf.concat(tensor_model, axis=0) # [W, T]
 
@@ -477,7 +552,7 @@ class DataModel(LogBase):
         LogBase.__init__(self)
 
         ### Acquisition data space
-        self.data_space = get_data_structure(data, name="acquisition", **kwargs)
+        self.data_space = get_data_structure(data=data, name="acquisition", **kwargs)
 
         ### Model space
         model_structures = kwargs.get("model_structures", None)
@@ -486,13 +561,14 @@ class DataModel(LogBase):
             self.model_space = self.data_space
         else:
             struc_list = []
-            for name, src in model_structures.items():
-                self.log.info("Creating model space structure: %s" % name)
-                if not isinstance(src, DataStructure):
-                    struc_list.append((name, get_data_structure(**src)))
+            for struc in model_structures:
+                if isinstance(struc, DataStructure):
+                    self.log.info("Found model space structure: %s" % struc.name)
+                    struc_list.append(struc)
                 else:
-                    struc_list.append((name, src))
-            self.model_space = CompositeDataStructure(struc_list)
+                    self.log.info("Creating model space structure")
+                    struc_list.append(get_data_structure(**struc))
+            self.model_space = CompositeStructure(struc_list)
 
         self.projector = self.model_space.get_projection(self.data_space)
 
@@ -502,13 +578,13 @@ class DataModel(LogBase):
         else:
             self.post_init = None
 
-    def model_to_data(self, tensor, pv_sum=True):
+    def model_to_data(self, tensor, pv_sum=False):
         """
         Convert model space data into source data space
         """
         return self.projector[0](tensor, pv_sum)
 
-    def data_to_model(self, tensor, pv_sum=True):
+    def data_to_model(self, tensor, pv_sum=False):
         """
         Convert source data space data into model space
         """

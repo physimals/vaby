@@ -6,7 +6,7 @@ import nibabel as nib
 
 import pytest
 
-from vaby.data import CorticalSurface, Volume, CompositeDataStructure
+from vaby.data import CorticalSurface, Volume, CompositeStructure
 from vaby.utils import NP_DTYPE
 
 def test_surf_plus_volume():
@@ -22,7 +22,7 @@ def test_surf_plus_volume():
         projector="vaby_proj.h5"
     )
 
-    struc = CompositeDataStructure([surf, vol])
+    struc = CompositeStructure([surf, vol])
     model2data, data2model = struc.get_projection(vol)
     struc_data = data2model(vol.srcdata.flat)
     assert struc_data.shape[0] == struc.size

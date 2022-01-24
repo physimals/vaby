@@ -39,7 +39,7 @@ print("Ground truth: a=%f, r=%f, noise=%f (std.dev.)" % (PARAMS_TRUTH[0], PARAMS
 # MU and BETA will increase
 
 gii = nib.load(opts.surface)
-nvertices = gii.darrays[1].data.shape[0]
+nvertices = gii.darrays[0].data.shape[0]
 print(f"Number of vertices on surface: {nvertices}")
 
 t = np.array([float(t)*opts.dt for t in range(opts.nt)])

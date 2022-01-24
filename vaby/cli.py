@@ -26,7 +26,8 @@ class ArgumentParser(argparse.ArgumentParser):
 
         group = self.add_argument_group("Main Options")
         group.add_argument("--data", help="Timeseries input data")
-        group.add_argument("--mask", help="Optional voxel mask")
+        group.add_argument("--mask", help="Optional voxel mask for volumetric data")
+        group.add_argument("--surface", help="Surface geometry data for surface based input data")
         group.add_argument("--post-init", dest="post_init_fname",
                          help="Initialize posterior from data file saved using --output-post")
         group.add_argument("--model", dest="model_name", help="Model name")

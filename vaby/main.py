@@ -51,7 +51,7 @@ def run(data, model_name, output, method, **kwargs):
     :param data: File name of 4D NIFTI data set containing data to be fitted
     :param model_name: Name of model we are fitting to
     :param output: output directory, will be created if it does not exist
-    :param mask: Optional file name of 3D Nifti data set containing data voxel mask
+    :param method: Inference method (avb, svb)
 
     All keyword arguments are passed to constructor of the model, the ``Svb``
     object and the ``Svb.train`` method.

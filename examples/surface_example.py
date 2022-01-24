@@ -16,8 +16,7 @@ cli.add_argument("--amp", help="Ground truth amplitude", type=float, default=42.
 cli.add_argument("--rate", help="Ground truth decay rate", type=float, default=0.5)
 cli.add_argument("--dt", help="Time resolution", type=float, default=0.1)
 cli.add_argument("--nt", help="Number of time points", type=int, default=100)
-cli.add_argument("--refimg", help="Nifti file containing reference space")
-cli.add_argument("--mask", help="Nifti file containing binary mask")
+cli.add_argument("--surface", help="Gifti file containing surface geometry data")
 cli.add_argument("--noise", help="Ground truth noise amplitude (std dev)", type=float, default=5)
 cli.add_argument("--rseed", help="Random number seed to give reproducible results", type=int)
 cli.add_argument("--debug", help="Debug logging", action="store_true", default=False)
@@ -38,34 +37,26 @@ print("Ground truth: a=%f, r=%f, noise=%f (std.dev.)" % (PARAMS_TRUTH[0], PARAMS
 # Gaussian distribution. Reducing the number of samples should make
 # the inference less 'confident' - i.e. the output variances for
 # MU and BETA will increase
-ref_nii = nib.load(opts.refimg)
-shape = ref_nii.shape[:3]
-print(f"Dimensions of volume: {shape}")
+
+gii = nib.load(opts.surface)
+nvertices = gii.darrays[1].data.shape[0]
+print(f"Number of vertices on surface: {nvertices}")
 
 t = np.array([float(t)*opts.dt for t in range(opts.nt)])
-params_voxelwise = np.tile(np.array(PARAMS_TRUTH)[..., np.newaxis, np.newaxis], (1, np.prod(shape), 1))
+params_voxelwise = np.tile(np.array(PARAMS_TRUTH)[..., np.newaxis, np.newaxis], (1, nvertices, 1))
 temp_model = vaby.get_model_class("exp")(None, dt=opts.dt)
 DATA_CLEAN = temp_model.evaluate(params_voxelwise, t).numpy()
 DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, DATA_CLEAN.shape)
-niidata = DATA_NOISY.reshape(list(shape) + [opts.nt,])
-nii = nib.Nifti1Image(niidata, None, ref_nii.header)
-nii.update_header()
-nii.to_filename("data_exp_noisy.nii.gz")
+giidata = DATA_NOISY.reshape([nvertices, opts.nt,])
+arr = nib.gifti.GiftiDataArray(giidata.astype(np.float32))
+gii = nib.GiftiImage(darrays=[arr])
+gii.to_filename("data_exp_noisy.gii")
 
 options = {
     "method" : opts.method,
-    "mask" : opts.mask,
+    "surface" : opts.surface,
     "dt" : opts.dt,
     "save_mean" : True,
-    "model_structures" : [
-        {
-            "name" : "L",
-            "type" : "CorticalSurface",
-            "white" : "gii/HCA6002236_V1_MR.L.white.native.surf.gii",
-            "pial" : "gii/HCA6002236_V1_MR.L.pial.native.surf.gii",
-            "projector" : "vaby_proj.h5",
-        },
-    ],
     "debug" : opts.debug,
     "save_log" : True,
     "log_stream" : sys.stdout,
@@ -82,4 +73,4 @@ elif opts.method == "avb":
         "max_iterations" : 20,
     })
 
-runtime, inf = vaby.run("data_exp_noisy.nii.gz", "exp", "exps_example_out", **options)
+runtime, inf = vaby.run("data_exp_noisy.gii", "exp", "exps_example_out", **options)

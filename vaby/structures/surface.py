@@ -10,6 +10,7 @@ import tensorflow as tf
 try:
     import toblerone
     import regtricks
+    from toblerone.classes import Hemisphere, Surface
 except ImportError:
     toblerone = None
 
@@ -25,18 +26,25 @@ class SimpleSurface(DataStructure):
     Currently a simple surface cannot be projected onto a volume, however it is possible
     to model surface based acquisition data on a matching surface.
     """
-    def __init__(self, data, trigs=None, verts=None, gii=None, file_ext=".gii", **kwargs):
+    def __init__(self, data, trigs=None, verts=None, geomdata=None, file_ext=".gii", **kwargs):
         DataStructure.__init__(self, file_ext=file_ext, **kwargs)
-        if gii is not None and (trigs is not None or verts is not None):
+        if toblerone is None:
+            raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
+
+        self.log.info("Simple surface structure")
+        self.srcdata = SimpleNamespace()
+        if geomdata is not None and (trigs is not None or verts is not None):
             raise ValueError("Can't specify trigs/vertices and GII file at the same time")
-        elif gii is not None:
-            self.trigs, self.verts = gii.darrays[0].data, gii.darrays[1].data
+        elif geomdata is not None:
+            if isinstance(geomdata, str):
+                self.srcdata.geom = Surface(geomdata, "surface")
+            else:
+                raise NotImplementedError("Can't yet create Toblerone surface from GII structure")
         elif trigs is None or verts is None:
             raise ValueError("Must specify both vertices and triangle lists")
         else:
-            self.trigs, self.verts = trigs, verts
+            self.srcdata.geom = Surface.manual(verts, trigs, name="surface")
 
-        self.srcdata = SimpleNamespace()
         self.srcdata.flat = data.astype(NP_DTYPE)
         while self.srcdata.flat.ndim < 2:
             # Interpret 1D data as 1 node timeseries
@@ -45,8 +53,14 @@ class SimpleSurface(DataStructure):
             raise ValueError("Data must be 1d (single node timeseries) or 2D (Timeseries for each node)")
         self.size = self.srcdata.flat.shape[0]
         self.srcdata.n_tpts = self.srcdata.flat.shape[1]
-        if self.size != len(self.verts):
-            raise ValueError(f"Timeseries data defined on {self.size} nodes, but {len(self.verts)} nodes in surface geometry data")
+        if self.size != self.srcdata.geom.n_points:
+            raise ValueError(f"Timeseries data defined on {self.size} nodes, but {self.srcdata.geom.n_points} nodes in surface geometry data")
+        self.log.info(f" - {self.size} vertices")
+        self.log.info(f" - {len(self.srcdata.geom.tris)} triangles")
+        self.log.info(f" - Source data contained {self.srcdata.n_tpts} time points")
+
+        self.adj_matrix = self.srcdata.geom.adjacency_matrix()
+        self.laplacian = self.srcdata.geom.mesh_laplacian()
 
     def _identity_projection(self, tensor, pv_sum):
         return tensor
@@ -98,16 +112,17 @@ class CorticalSurface(DataStructure):
         DataStructure.__init__(self, file_ext=file_ext, **kwargs)
         if toblerone is None:
             raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
-        from toblerone.classes import Hemisphere, Surface
 
         if self.name not in ("L", "R"):
             raise ValueError("For now, the names of cortical surfaces must be either 'L' or 'R'")
 
+        self.log.info("Cortical surface structure")
         self.hemisphere = Hemisphere(Surface(white, self.name + "WS"), Surface(pial, self.name + "PS"), self.name)
         self.size = self.hemisphere.n_points
+        self.log.info(f" - {self.size} vertices")
         self.projector = kwargs.get("projector", None)
         if isinstance(self.projector, str):
-            self.log.info(f"Loading projector from {self.projector}")
+            self.log.info(f" - Loading projector from {self.projector}")
             self.projector = toblerone.Projector.load(self.projector)
 
         self.adj_matrix = self.hemisphere.adjacency_matrix()

@@ -32,9 +32,7 @@ def get_data_structure(**kwargs):
             geomdata = kwargs.get("surface", None)
             if not geomdata:
                 raise ValueError("Surface based input data provided but no surface geometry file supplied")
-            elif isinstance(geomdata, str):
-                geomdata = nib.load(geomdata)
-            return SimpleSurface(tsdata, gii=geomdata, **kwargs)
+            return SimpleSurface(tsdata, geomdata=geomdata, **kwargs)
         else:
             raise ValueError("Unable to create model structure from data type %s" % type(data))
     else:

@@ -30,21 +30,23 @@ class DataModel(LogBase):
         LogBase.__init__(self)
 
         ### Acquisition data space
+        self.log.info("Creating acquisition data structure")
         self.data_space = get_data_structure(data=data, name="acquisition", **kwargs)
 
         ### Model space
+        self.log.info("Creating model inference data structure")
         model_structures = kwargs.get("model_structures", None)
         if model_structures is None:
-            self.log.info(" - Model space is same as acquisition space")
+            self.log.info(" - Model structure is same as acquisition structure")
             self.model_space = self.data_space
         else:
             struc_list = []
             for struc in model_structures:
                 if isinstance(struc, DataStructure):
-                    self.log.info("Found model space structure: %s" % struc.name)
+                    self.log.info(" - Found model structure: %s" % struc.name)
                     struc_list.append(struc)
                 else:
-                    self.log.info("Creating model space structure")
+                    self.log.info(" - Creating model structure")
                     struc_list.append(get_data_structure(**struc))
             self.model_space = CompositeStructure(struc_list)
 

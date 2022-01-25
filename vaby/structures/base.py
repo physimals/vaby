@@ -14,6 +14,7 @@ class DataStructure(LogBase):
     
     Each data structure has the following attributes:
      - size: Total number of independent nodes in the structure (e.g. surface nodes, unmasked voxels)
+     - num_strucs: Number of disjoint sub-structures. This is used to determine for example the number of smoothing parameters
      - adj_matrix: Sparse matrix dimension (size, size) containing 1 where nodes are regarded as connected, 0 otherwise
      - laplacian: Sparse matrix dimension (size, size) containing Laplacian for spatial smoothing
      - file_ext: Standard extension for saved files (e.g. .nii.gz or .gii)
@@ -87,8 +88,11 @@ class CompositeStructure(DataStructure):
         :param parts: Sequence of DataStructure instances
         """
         DataStructure.__init__(self)
+        if not all([s.num_strucs for s in parts]):
+            raise ValueError("Currently we cannot create a composite structure containing other composite structures")
         self.parts = parts
         self.size = sum([p.size for p in parts])
+        self.num_strucs = len(self.parts)
         self.slices = []
         start_idx = 0
         for p in self.parts:

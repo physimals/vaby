@@ -32,6 +32,7 @@ class SimpleSurface(DataStructure):
             raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
 
         self.log.info("Simple surface structure")
+        self.num_strucs = 1
         self.srcdata = SimpleNamespace()
         if geomdata is not None and (trigs is not None or verts is not None):
             raise ValueError("Can't specify trigs/vertices and GII file at the same time")
@@ -60,7 +61,19 @@ class SimpleSurface(DataStructure):
         self.log.info(f" - Source data contained {self.srcdata.n_tpts} time points")
 
         self.adj_matrix = self.srcdata.geom.adjacency_matrix()
-        self.laplacian = self.srcdata.geom.mesh_laplacian()
+        self.laplacian = self._scipy_to_tf_sparse(self.srcdata.geom.mesh_laplacian())
+
+    def _scipy_to_tf_sparse(self, scipy_sparse):
+        """
+        Converts a scipy sparse matrix to TF representation
+        """
+        spmat = scipy_sparse.tocoo()
+        return tf.SparseTensor(
+            indices=np.array([
+                spmat.row, spmat.col]).T,
+            values=spmat.data.astype(NP_DTYPE), 
+            dense_shape=spmat.shape, 
+        )
 
     def _identity_projection(self, tensor, pv_sum):
         return tensor
@@ -117,6 +130,7 @@ class CorticalSurface(DataStructure):
             raise ValueError("For now, the names of cortical surfaces must be either 'L' or 'R'")
 
         self.log.info("Cortical surface structure")
+        self.num_strucs = 1
         self.hemisphere = Hemisphere(Surface(white, self.name + "WS"), Surface(pial, self.name + "PS"), self.name)
         self.size = self.hemisphere.n_points
         self.log.info(f" - {self.size} vertices")

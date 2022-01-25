@@ -27,6 +27,7 @@ class Volume(DataStructure):
         DataStructure.__init__(self, file_ext=file_ext, **kwargs)
         self.log.info("Volumetric data structure: %s" % self.name)
         self.log.info(" - File extension: %s" % self.file_ext)
+        self.num_strucs = 1
 
         # In principle we could create a structure without source data, but for now it's hard to see
         # a reason why you'd want to do that

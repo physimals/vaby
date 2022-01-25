@@ -3,6 +3,7 @@ VABY - Basic structure models
 """
 import os
 
+import numpy as np
 from scipy import sparse
 import tensorflow as tf
 
@@ -23,6 +24,18 @@ class DataStructure(LogBase):
         LogBase.__init__(self)
         self.file_ext = kwargs.get("file_ext", "")
         self.name = kwargs.get("name", "data")
+
+    def _scipy_to_tf_sparse(self, scipy_sparse):
+        """
+        Converts a scipy sparse matrix to TF representation
+        """
+        spmat = scipy_sparse.tocoo()
+        return tf.SparseTensor(
+            indices=np.array([
+                spmat.row, spmat.col]).T,
+            values=spmat.data.astype(NP_DTYPE), 
+            dense_shape=spmat.shape, 
+        )
 
     def get_projection(self, data_space):
         """

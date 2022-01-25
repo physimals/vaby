@@ -63,18 +63,6 @@ class SimpleSurface(DataStructure):
         self.adj_matrix = self.srcdata.geom.adjacency_matrix()
         self.laplacian = self._scipy_to_tf_sparse(self.srcdata.geom.mesh_laplacian())
 
-    def _scipy_to_tf_sparse(self, scipy_sparse):
-        """
-        Converts a scipy sparse matrix to TF representation
-        """
-        spmat = scipy_sparse.tocoo()
-        return tf.SparseTensor(
-            indices=np.array([
-                spmat.row, spmat.col]).T,
-            values=spmat.data.astype(NP_DTYPE), 
-            dense_shape=spmat.shape, 
-        )
-
     def _identity_projection(self, tensor, pv_sum):
         return tensor
 

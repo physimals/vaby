@@ -222,7 +222,7 @@ class Volume(DataStructure):
         lap = self.adj_matrix.todok(copy=True)
         lap[np.diag_indices(lap.shape[0])] = -lap.sum(1).T
         assert lap.sum(1).max() == 0, 'Unweighted Laplacian matrix'
-        self.laplacian = lap.tocoo()
+        self.laplacian = self._scipy_to_tf_sparse(lap)
 
 class PartialVolumes(Volume):
     """

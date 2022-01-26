@@ -16,6 +16,8 @@ class DataStructure(LogBase):
     Each data structure has the following attributes:
      - size: Total number of independent nodes in the structure (e.g. surface nodes, unmasked voxels)
      - num_strucs: Number of disjoint sub-structures. This is used to determine for example the number of smoothing parameters
+     - parts: Sequence of sub-structures
+     - slices: Slice objects to identify nodes relevant to each sub-structure
      - adj_matrix: Sparse matrix dimension (size, size) containing 1 where nodes are regarded as connected, 0 otherwise
      - laplacian: Sparse matrix dimension (size, size) containing Laplacian for spatial smoothing
      - file_ext: Standard extension for saved files (e.g. .nii.gz or .gii)
@@ -24,6 +26,9 @@ class DataStructure(LogBase):
         LogBase.__init__(self)
         self.file_ext = kwargs.get("file_ext", "")
         self.name = kwargs.get("name", "data")
+        self.num_strucs = 1
+        self.parts = [self]
+        self.slices = [None]
 
     def _scipy_to_tf_sparse(self, scipy_sparse):
         """

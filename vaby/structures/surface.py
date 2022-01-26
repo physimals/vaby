@@ -118,7 +118,6 @@ class CorticalSurface(DataStructure):
             raise ValueError("For now, the names of cortical surfaces must be either 'L' or 'R'")
 
         self.log.info("Cortical surface structure")
-        self.num_strucs = 1
         self.hemisphere = Hemisphere(Surface(white, self.name + "WS"), Surface(pial, self.name + "PS"), self.name)
         self.size = self.hemisphere.n_points
         self.log.info(f" - {self.size} vertices")

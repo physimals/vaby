@@ -32,7 +32,7 @@ class MultiExpModel(Model):
                               **options),
             ]
 
-    def _init_amp(self, _param, _t, data):
+    def _init_amp(self, _param, data):
         return tf.reduce_max(data, axis=1) / self.num_exps, None
 
     def evaluate(self, params, tpts):

@@ -18,8 +18,8 @@ class DataStructure(LogBase):
      - num_strucs: Number of disjoint sub-structures. This is used to determine for example the number of smoothing parameters
      - parts: Sequence of sub-structures
      - slices: Slice objects to identify nodes relevant to each sub-structure
-     - adj_matrix: Sparse matrix dimension (size, size) containing 1 where nodes are regarded as connected, 0 otherwise
-     - laplacian: Sparse matrix dimension (size, size) containing Laplacian for spatial smoothing
+     - adj_matrix: Scipy sparse matrix dimension (size, size) containing 1 where nodes are regarded as connected, 0 otherwise
+     - laplacian: Scipy sparse matrix dimension (size, size) containing Laplacian for spatial smoothing
      - file_ext: Standard extension for saved files (e.g. .nii.gz or .gii)
     """
     def __init__(self, **kwargs):
@@ -29,18 +29,6 @@ class DataStructure(LogBase):
         self.num_strucs = 1
         self.parts = [self]
         self.slices = [None]
-
-    def _scipy_to_tf_sparse(self, scipy_sparse):
-        """
-        Converts a scipy sparse matrix to TF representation
-        """
-        spmat = scipy_sparse.tocoo()
-        return tf.SparseTensor(
-            indices=np.array([
-                spmat.row, spmat.col]).T,
-            values=spmat.data.astype(NP_DTYPE), 
-            dense_shape=spmat.shape, 
-        )
 
     def get_projection(self, data_space):
         """
@@ -52,8 +40,9 @@ class DataStructure(LogBase):
 
         :param data_space: Volume defining the acquisition data space
         :return: Tuple of callables (model_to_data, data_to_model) which may be called
-                 passing a tensor in data/model space and returning a tensor in model/data
-                 space
+                 passing a 2D tensor in data/model space and returning a 2D tensor 
+                 in model/data space. Handling of 1D tensors (vectors) and 3D timeseries
+                 tensors is handled in the data model.
         """
         raise NotImplementedError()
 
@@ -61,7 +50,7 @@ class DataStructure(LogBase):
         """
         Check another supplied data structure represents the same underlying data space
         """
-        if type(self) != type(struc):
+        if not isinstance(self, type(struc)):
             raise ValueError("Data structure of type %s does not match structure of type %s" % (type(self), type(struc)))
         
         if self.size != struc.size:
@@ -135,6 +124,20 @@ class CompositeStructure(DataStructure):
             return tf.concat(tensor_model, axis=0) # [W, T]
 
         return model2data, data2model
+
+    def split(self, tensor, axis):
+        """
+        Split a tensor into sub-structure parts
+
+        :param tensor: Tensor whose first dimension is nodes
+        :return: Mapping of structure name : tensor
+        """
+        slices = [slice(None)] * int(tf.rank(tensor))
+        ret = {}
+        for struc, slc in zip(self.parts, self.slices):
+            slices[axis] = slc
+            ret[struc.name] = tensor[slices]
+        return ret
 
     def save_data(self, data, name, outdir="."):
         for struct, slc in zip(self.parts, self.slices):

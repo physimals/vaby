@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import nibabel as nib
 from scipy import sparse
+import tensorflow as tf
 
 from ..utils import NP_DTYPE
 from .base import DataStructure
@@ -35,6 +36,9 @@ class Volume(DataStructure):
         elif vol_data is None:
             vol_data = nii.get_fdata().astype(NP_DTYPE)
         else:
+            if isinstance(vol_data, str):
+                nii = nib.load(vol_data)
+                vol_data = nii.get_fdata()
             vol_data = vol_data.astype(NP_DTYPE)
 
         # Use data supplied to define shape of structure
@@ -93,6 +97,8 @@ class Volume(DataStructure):
             self.check_compatible(data_space)
             return (self._identity_projection, self._identity_projection)
         except:
+            import traceback
+            traceback.print_exc()
             raise NotImplementedError("Projection between different volume spaces")
 
     def check_compatible(self, struc):
@@ -221,7 +227,8 @@ class Volume(DataStructure):
         lap = self.adj_matrix.todok(copy=True)
         lap[np.diag_indices(lap.shape[0])] = -lap.sum(1).T
         assert lap.sum(1).max() == 0, 'Unweighted Laplacian matrix'
-        self.laplacian = self._scipy_to_tf_sparse(lap)
+        self.laplacian = lap
+        #self.laplacian = self._scipy_to_tf_sparse(lap)
 
 class PartialVolumes(Volume):
     """
@@ -252,8 +259,7 @@ class PartialVolumes(Volume):
                 return tensor * self.pvs
 
             def _data2model(tensor, pv_sum=False):
-                # FIXME how is this defined?
-                return tensor
+                return tensor * self.pvs
 
             return _model2data, _data2model
         except:

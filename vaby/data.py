@@ -5,6 +5,7 @@ import math
 import collections
 
 import numpy as np
+import tensorflow as tf
 
 from .utils import LogBase, NP_DTYPE
 from .structures import get_data_structure, DataStructure, CompositeStructure
@@ -25,6 +26,8 @@ class DataModel(LogBase):
                      and model space. The first converts model space tensors to
                      acquisition space, the second goes the other way.
     """
+    MODEL_SPACE = "model space"
+    DATA_SPACE = "data space"
 
     def __init__(self, data, **kwargs):
         LogBase.__init__(self)
@@ -50,7 +53,7 @@ class DataModel(LogBase):
                     struc_list.append(get_data_structure(**struc))
             self.model_space = CompositeStructure(struc_list)
 
-        self.projector = self.model_space.get_projection(self.data_space)
+        self.model2data, self.data2model = self.model_space.get_projection(self.data_space)
 
         if kwargs.get("initial_posterior", None):
             raise NotImplementedError()
@@ -58,17 +61,39 @@ class DataModel(LogBase):
         else:
             self.post_init = None
 
+    def _change_space(self, projector, tensor, pv_sum=False):
+        """
+        Convert model space data into source data space
+        """
+        vector_input = tf.rank(tensor) < 2
+        timeseries_input = tf.rank(tensor) == 3
+        if vector_input:
+            tensor = tf.expand_dims(tensor, -1)
+        
+        if timeseries_input:
+            ret = []
+            for t in range(tensor.shape[2]):
+                ret.append(projector(tensor[..., t], pv_sum))
+            ret = tf.stack(ret, axis=2)
+        else:
+            ret = projector(tensor, pv_sum)
+
+        if vector_input:
+            ret = tf.reshape(ret, [-1])
+
+        return ret
+
     def model_to_data(self, tensor, pv_sum=False):
         """
         Convert model space data into source data space
         """
-        return self.projector[0](tensor, pv_sum)
+        return self._change_space(self.model2data, tensor, pv_sum)
 
     def data_to_model(self, tensor, pv_sum=False):
         """
         Convert source data space data into model space
         """
-        return self.projector[1](tensor, pv_sum)
+        return self._change_space(self.data2model, tensor, pv_sum)
 
     def encode_posterior(self, mean, cov):
         """

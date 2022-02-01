@@ -2,7 +2,7 @@ import numpy as np
 import nibabel as nib
 
 from .volume import Volume, PartialVolumes
-from .surface import SimpleSurface
+from .surface import SimpleSurface, CorticalSurface
 from .base import DataStructure, CompositeStructure
 
 def get_data_structure(**kwargs):

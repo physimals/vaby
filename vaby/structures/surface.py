@@ -61,7 +61,8 @@ class SimpleSurface(DataStructure):
         self.log.info(f" - Source data contained {self.srcdata.n_tpts} time points")
 
         self.adj_matrix = self.srcdata.geom.adjacency_matrix()
-        self.laplacian = self._scipy_to_tf_sparse(self.srcdata.geom.mesh_laplacian())
+        #self.laplacian = self._scipy_to_tf_sparse(self.srcdata.geom.mesh_laplacian())
+        self.laplacian = self.srcdata.geom.mesh_laplacian()
 
     def _identity_projection(self, tensor, pv_sum):
         return tensor
@@ -147,9 +148,6 @@ class CorticalSurface(DataStructure):
             "v2n_noedge" : projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
         }
 
-        if data_space.size != proj_matrices["n2v"].shape[0]:
-            raise ValueError('Acquisition data size does not match projector')
-
         # Knock out voxels from projection matrices that are not in the mask
         # and convert to sparse tensors
         proj_tensors = {}
@@ -165,38 +163,24 @@ class CorticalSurface(DataStructure):
                 dense_shape=masked_mat.shape,
             )
 
-        def _surf2vol(tensor, pv_sum=False):
-            is_vector = tf.rank(tensor) < 2
-            if is_vector:
-                tensor = tf.expand_dims(tensor, -1)
+        if data_space.size != proj_tensors["n2v"].shape[0]:
+            raise ValueError('Acquisition data size does not match projector')
 
+        def _surf2vol(tensor, pv_sum=False):
             if pv_sum:
                 proj = proj_tensors["n2v"]
             else:
                 proj = proj_tensors["n2v_noedge"]
 
-            print("_surf2vol: %s %s" % (proj.shape, tensor.shape))
-            ret = tf.sparse.sparse_dense_matmul(proj, tensor)
-            if is_vector:
-                ret = tf.reshape(ret, [-1])
-
-            return ret
+            return tf.sparse.sparse_dense_matmul(proj, tensor)
 
         def _vol2surf(tensor, pv_sum=False):
-            is_vector = tf.rank(tensor) < 2
-            if is_vector:
-                tensor = tf.expand_dims(tensor, -1)
-
             if pv_sum:
                 proj = proj_tensors["v2n"]
             else:
                 proj = proj_tensors["v2n_noedge"]
 
-            ret = tf.sparse.sparse_dense_matmul(proj, tensor)
-            if is_vector:
-                ret = tf.reshape(ret, [-1])
-
-            return ret
+            return tf.sparse.sparse_dense_matmul(proj, tensor)
 
         return (_surf2vol, _vol2surf)
 

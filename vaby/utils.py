@@ -125,11 +125,11 @@ class InferenceMethod(LogBase):
         variances = self.model_var
         for idx, param in enumerate(params):
             if kwargs.get("save_mean", False):
-                self.data_model.model_space.save_data(mean[idx], "mean_%s" % param, output)
+                self.data_model.save_model_data(mean[idx], "mean_%s" % param, output, **kwargs)
             if kwargs.get("save_var", False):
-                self.data_model.model_space.save_data(variances[idx], "var_%s" % param, output)
+                self.data_model.save_model_data(variances[idx], "var_%s" % param, output, **kwargs)
             if kwargs.get("save_std", False):
-                self.data_model.model_space.save_data(np.sqrt(variances[idx]), "std_%s" % param, output)
+                self.data_model.save_model_data(np.sqrt(variances[idx]), "std_%s" % param, output, **kwargs)
 
         if kwargs.get("save_noise", False):
             if kwargs.get("save_mean", False):
@@ -138,6 +138,10 @@ class InferenceMethod(LogBase):
                 self.data_model.data_space.save_data(self.noise_var, "var_noise", output)
             if kwargs.get("save_std", False):
                 self.data_model.data_space.save_data(np.sqrt(self.noise_var), "std_noise", output)
+
+        # Write out modelfit
+        if kwargs.get("save_model_fit", False):
+            self.data_model.save_model_data(self.modelfit, "modelfit", output, **kwargs)
 
         # Write out voxelwise free energy (and history if required)
         if kwargs.get("save_free_energy", False):
@@ -149,10 +153,6 @@ class InferenceMethod(LogBase):
         if kwargs.get("save_param_history", False):
             for idx, param in enumerate(params):
                 self.data_model.model_space.save_data(self.history["model_mean"][idx], "mean_%s_history" % param, output)
-
-        # Write out modelfit
-        if kwargs.get("save_model_fit", False):
-            self.data_model.model_space.save_data(self.modelfit, "modelfit", output)
 
         # Write out posterior
         if kwargs.get("save_post", False):

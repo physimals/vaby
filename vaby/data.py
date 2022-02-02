@@ -95,6 +95,12 @@ class DataModel(LogBase):
         """
         return self._change_space(self.data2model, tensor, pv_sum)
 
+    def save_model_data(self, data, name, output, save_model=True, save_native=False, **kwargs):
+        if save_model:
+            self.model_space.save_data(data, name, output)
+        if save_native:
+            self.data_space.save_data(self.model_to_data(data), name, output)
+
     def encode_posterior(self, mean, cov):
         """
         Encode the posterior mean and covariance as a single timeseries

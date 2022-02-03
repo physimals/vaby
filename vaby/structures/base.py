@@ -1,13 +1,9 @@
 """
-VABY - Basic structure models
+VABY - Base class for structure models
 """
 import os
 
-import numpy as np
-from scipy import sparse
-import tensorflow as tf
-
-from ..utils import LogBase, NP_DTYPE
+from ..utils import LogBase
 
 class DataStructure(LogBase):
     """"
@@ -15,9 +11,6 @@ class DataStructure(LogBase):
     
     Each data structure has the following attributes:
      - size: Total number of independent nodes in the structure (e.g. surface nodes, unmasked voxels)
-     - num_strucs: Number of disjoint sub-structures. This is used to determine for example the number of smoothing parameters
-     - parts: Sequence of sub-structures
-     - slices: Slice objects to identify nodes relevant to each sub-structure
      - adj_matrix: Scipy sparse matrix dimension (size, size) containing 1 where nodes are regarded as connected, 0 otherwise
      - laplacian: Scipy sparse matrix dimension (size, size) containing Laplacian for spatial smoothing
      - file_ext: Standard extension for saved files (e.g. .nii.gz or .gii)
@@ -26,9 +19,6 @@ class DataStructure(LogBase):
         LogBase.__init__(self)
         self.file_ext = kwargs.get("file_ext", "")
         self.name = kwargs.get("name", "data")
-        self.num_strucs = 1
-        self.parts = [self]
-        self.slices = [None]
 
     def get_projection(self, data_space):
         """
@@ -76,69 +66,12 @@ class DataStructure(LogBase):
         raise NotImplementedError()
 
     def save_data(self, data, name, outdir="."):
+        """
+        Save data defined in this data space
+        
+        :param data: Data array defined in this data space, i.e. a 1D Numpy array
+                     or 2D array if multi-volume data
+        :param name: Name for saved data
+        :param outdir: Output directory
+        """
         self.nibabel_image(data).to_filename(os.path.join(outdir, name) + self.file_ext)
-
-class CompositeStructure(DataStructure):
-    """
-    A data structure with multiple named parts
-
-    The adjacency and laplacian matrix are block-diagonal copies of the source structures with
-    zeros elsewhere (i.e. the separate structures are not considered to be connected).
-
-    Attributes:
-     - parts: Sequence of (name, DataStructure) instances
-     - slices: Slice object for each part to extract model nodes relevant to that part
-    """
-
-    def __init__(self, parts, **kwargs):
-        """
-        :param parts: Sequence of DataStructure instances
-        """
-        DataStructure.__init__(self)
-        if not all([s.num_strucs for s in parts]):
-            raise ValueError("Currently we cannot create a composite structure containing other composite structures")
-        self.parts = parts
-        self.size = sum([p.size for p in parts])
-        self.num_strucs = len(self.parts)
-        self.slices = []
-        start_idx = 0
-        for p in self.parts:
-            self.slices.append(slice(start_idx, start_idx+p.size))
-            start_idx += p.size
-        self.adj_matrix = sparse.block_diag([p.adj_matrix for p in self.parts]).astype(NP_DTYPE)
-        self.laplacian = sparse.block_diag([p.laplacian for p in self.parts]).astype(NP_DTYPE)
-
-    def get_projection(self, data_space):
-        projectors = [p.get_projection(data_space) for p in self.parts]
-
-        def model2data(tensor, pv_sum=False):
-            tensor_data = []
-            for proj, slc in zip(projectors, self.slices):
-                tensor_data.append(proj[0](tensor[slc, ...], pv_sum)) # [V, T]
-            return sum(tensor_data) # [V, T]
-
-        def data2model(tensor, pv_sum=False):
-            tensor_model = []
-            for proj in projectors:
-                tensor_model.append(proj[1](tensor, pv_sum)) # [w, T]
-            return tf.concat(tensor_model, axis=0) # [W, T]
-
-        return model2data, data2model
-
-    def split(self, tensor, axis):
-        """
-        Split a tensor into sub-structure parts
-
-        :param tensor: Tensor whose first dimension is nodes
-        :return: Mapping of structure name : tensor
-        """
-        slices = [slice(None)] * int(tf.rank(tensor))
-        ret = {}
-        for struc, slc in zip(self.parts, self.slices):
-            slices[axis] = slc
-            ret[struc.name] = tensor[slices]
-        return ret
-
-    def save_data(self, data, name, outdir="."):
-        for struct, slc in zip(self.parts, self.slices):
-            struct.save_data(data[slc, ...], name + "_" + struct.name, outdir)

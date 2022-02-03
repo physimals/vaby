@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 from .utils import LogBase, NP_DTYPE
-from .structures import get_data_structure, DataStructure, CompositeStructure
+from .structures import get_data_structure, DataStructure, ModelSpace
 
 class DataModel(LogBase):
     """
@@ -39,9 +39,9 @@ class DataModel(LogBase):
         ### Model space
         self.log.info("Creating model inference data structure")
         model_structures = kwargs.get("model_structures", None)
-        if model_structures is None:
+        if not model_structures:
             self.log.info(" - Model structure is same as acquisition structure")
-            self.model_space = self.data_space
+            struc_list = [self.data_space]
         else:
             struc_list = []
             for struc in model_structures:
@@ -51,8 +51,8 @@ class DataModel(LogBase):
                 else:
                     self.log.info(" - Creating model structure")
                     struc_list.append(get_data_structure(**struc))
-            self.model_space = CompositeStructure(struc_list)
 
+        self.model_space = ModelSpace(struc_list)
         self.model2data, self.data2model = self.model_space.get_projection(self.data_space)
 
         if kwargs.get("initial_posterior", None):
@@ -96,6 +96,15 @@ class DataModel(LogBase):
         return self._change_space(self.data2model, tensor, pv_sum)
 
     def save_model_data(self, data, name, output, save_model=True, save_native=False, **kwargs):
+        """
+        Save data defined in model space
+
+        :param data: Numpy array whose first dimension corresponds to model nodes
+        :param name: Name for save data
+        :param outdir: Output directory
+        :param save_model: If True, save each data in separate file for each model structure
+        :param save_native: If True, save data transformed into acquisition data space
+        """
         if save_model:
             self.model_space.save_data(data, name, output)
         if save_native:

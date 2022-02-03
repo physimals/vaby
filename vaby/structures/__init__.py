@@ -1,9 +1,10 @@
 import numpy as np
 import nibabel as nib
 
+from .base import DataStructure
 from .volume import Volume, PartialVolumes
 from .surface import SimpleSurface, CorticalSurface
-from .base import DataStructure, CompositeStructure
+from .model import ModelSpace
 
 def get_data_structure(**kwargs):
     """
@@ -39,10 +40,10 @@ def get_data_structure(**kwargs):
         raise ValueError("Unable to create model structure - neither data nor structure type given")
 
 __all__ = [
+    "DataStructure",
     "Volume",
     "PartialVolumes",
     "SimpleSurface",
     "CortialSurface",
-    "CompositeStructure",
-    "DataStructure",
+    "ModelSpace",
 ]

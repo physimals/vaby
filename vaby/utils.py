@@ -111,65 +111,70 @@ class InferenceMethod(LogBase):
             if hasattr(self, attr):
                 setattr(self, attr, getattr(self, attr).numpy())
 
-    def save(self, output, rt, **kwargs):
+    def save(self, outdir, rt=None, **kwargs):
         """
         Save output to directory
 
-        FIXME Currently tailored for AVB - needs to be generic
+        :param outdir: Output directory
+        :param rt: Runtime in seconds
         """
-        makedirs(output, exist_ok=True)
-        params = [p.name for p in self.params]
+        makedirs(outdir, exist_ok=True)
         
         # Write out parameter mean and variance images
+        # FIXME pv_scale for variance / std?
         mean = self.model_mean
         variances = self.model_var
-        for idx, param in enumerate(params):
+        for idx, param in enumerate(self.params):
             if kwargs.get("save_mean", False):
-                self.data_model.save_model_data(mean[idx], "mean_%s" % param, output, **kwargs)
+                self.data_model.save_model_data(mean[idx], "mean_%s" % param.name, outdir, pv_scale=param.pv_scale, **kwargs)
             if kwargs.get("save_var", False):
-                self.data_model.save_model_data(variances[idx], "var_%s" % param, output, **kwargs)
+                self.data_model.save_model_data(variances[idx], "var_%s" % param.name, outdir, **kwargs)
             if kwargs.get("save_std", False):
-                self.data_model.save_model_data(np.sqrt(variances[idx]), "std_%s" % param, output, **kwargs)
+                self.data_model.save_model_data(np.sqrt(variances[idx]), "std_%s" % param.name, outdir, **kwargs)
 
         if kwargs.get("save_noise", False):
             if kwargs.get("save_mean", False):
-                self.data_model.data_space.save_data(self.noise_mean, "mean_noise", output)
+                self.data_model.data_space.save_data(self.noise_mean, "mean_noise", outdir)
             if kwargs.get("save_var", False):
-                self.data_model.data_space.save_data(self.noise_var, "var_noise", output)
+                self.data_model.data_space.save_data(self.noise_var, "var_noise", outdir)
             if kwargs.get("save_std", False):
-                self.data_model.data_space.save_data(np.sqrt(self.noise_var), "std_noise", output)
+                self.data_model.data_space.save_data(np.sqrt(self.noise_var), "std_noise", outdir)
 
         # Write out modelfit
         if kwargs.get("save_model_fit", False):
-            self.data_model.save_model_data(self.modelfit, "modelfit", output, **kwargs)
+            self.data_model.save_model_data(self.modelfit, "modelfit", outdir, pv_scale=True, **kwargs)
+
+        # Total model space partial volumes in data space
+        if kwargs.get("save_total_pv", False):
+            self.data_model.data_space.save_data(self.data_model.dataspace_pvs, "total_pv", outdir)
 
         # Write out voxelwise free energy (and history if required)
         if kwargs.get("save_free_energy", False):
-            self.data_model.model_space.save_data(self.free_energy_vox, "free_energy", output)
+            self.data_model.model_space.save_data(self.free_energy_vox, "free_energy", outdir)
         if kwargs.get("save_free_energy_history", False):
-            self.data_model.model_space.save_data(self.history["free_energy_vox"], "free_energy_history", output)
+            self.data_model.model_space.save_data(self.history["free_energy_vox"], "free_energy_history", outdir)
 
         # Write out voxelwise parameter history
         if kwargs.get("save_param_history", False):
-            for idx, param in enumerate(params):
-                self.data_model.model_space.save_data(self.history["model_mean"][idx], "mean_%s_history" % param, output)
+            for idx, param in enumerate(self.params):
+                self.data_model.model_space.save_data(self.history["model_mean"][idx], "mean_%s_history" % param.name, outdir, pv_scale=param.pv_scale, **kwargs)
 
         # Write out posterior
         if kwargs.get("save_post", False):
             post_data = self.data_model.encode_posterior(self.all_mean, self.all_cov)
             self.log.debug("Posterior data shape: %s", post_data.shape)
-            self.data_model.model_space.save_data(post_data, "posterior", output)
+            self.data_model.model_space.save_data(post_data, "posterior", outdir)
 
         # Write out runtime
-        if kwargs.get("save_runtime", False):
-            with open(os.path.join(output, "runtime"), "w") as runtime_f:
+        if rt and kwargs.get("save_runtime", False):
+            with open(os.path.join(outdir, "runtime"), "w") as runtime_f:
                 runtime_f.write("%f\n" % rt)
 
         # Write out input data
         if kwargs.get("save_input_data", False):
-            self.data_model.data_space.save_data(self.data_model.data_space.srcdata.flat, "input_data", output)
+            self.data_model.data_space.save_data(self.data_model.data_space.srcdata.flat, "input_data", outdir)
 
-        self.log.info("Output written to: %s", output)
+        self.log.info("Output written to: %s", outdir)
 
 def makedirs(data_vol, exist_ok=False):
     """

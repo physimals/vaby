@@ -29,19 +29,14 @@ def get_parameter(name, **kwargs):
     custom_kwargs = kwargs.pop("param_overrides", {}).get(name, {})
     kwargs.update(custom_kwargs)
 
-    desc = kwargs.get("desc", "No description given")
-    prior_dist = dist.get_dist(prefix="prior", **kwargs)
-    prior_type = kwargs.get("prior_type", "N")
+    kwargs["prior"] = dist.get_dist(prefix="prior", **kwargs)
+    kwargs["post"] = dist.get_dist(prefix="post", **kwargs)
 
-    post_dist = dist.get_dist(prefix="post", **kwargs)
-    post_type = kwargs.get("post_type", "vertexwise")
-    post_init = kwargs.get("post_init", None)
-
-    # FIXME: hack because when var = 1 the LogNormal gives inf latent cost during training
+    # FIXME: Because when var = 1 the LogNormal gives inf latent cost during training
     if (kwargs.get('dist') == 'LogNormal') and (kwargs.get('var') == 1.0):
-        raise RuntimeError('LogNormal distribution cannot have initial var = 1.0') 
+        raise ValueError('LogNormal distribution cannot have initial var = 1.0') 
 
-    return Parameter(name, desc=desc, prior=prior_dist, prior_type=prior_type, post=post_dist, post_init=post_init, post_type=post_type)
+    return Parameter(name, **kwargs)
 
 class Parameter(LogBase):
     """
@@ -62,6 +57,8 @@ class Parameter(LogBase):
                     of the posterior will be inferred however the distibution type is fixed
          - ``post_init`` Callable which will be used to initialize the posterior from the data
          - ``post_type`` Type of posterior, e.g. nodewise, global...
+         - ``pv_scale`` If True, parameter scales with total partial volume, e.g. perfusion, 
+                        False otherwise (e.g. delay times, tissue properties like T1, T2...).
         """
         LogBase.__init__(self)
 
@@ -75,6 +72,7 @@ class Parameter(LogBase):
         self.post_dist = kwargs.get("post", self.prior_dist)
         self.post_init = kwargs.get("post_init", None)
         self.post_type = kwargs.get("post_type", "vertexwise")
+        self.pv_scale = kwargs.get("pv_scale", False)
 
     def __str__(self):
         return "Parameter: %s (%s)" % (self.name, self.desc)

@@ -55,13 +55,29 @@ class DataModel(LogBase):
         self.model_space = ModelSpace(struc_list)
         self.model2data, self.data2model = self.model_space.get_projection(self.data_space)
 
+        # Calculate the total partial volume of the model space in each data space voxel
+        self.dataspace_pv_upweight = None
+        self.dataspace_pvs = self.model_to_data(np.ones([self.model_space.size], dtype=NP_DTYPE), pv_scale=True)
+        if np.any(self.dataspace_pvs > 1.0001):
+            self.log.warn("Model space has partial volumes > 1 (worst: %f)" % np.max(self.dataspace_pvs))
+        else:
+            self.log.info("Model space partial volumes are all good")
+
+        #print(self.dataspace_pvs, self.dataspace_pvs.shape)
+        #too_small = self.dataspace_pvs < 0.01
+        #print(too_small, too_small.shape)
+        #self.dataspace_pvs[self.dataspace_pvs < 0.01] = 1
+        #self.dataspace_pvs[self.dataspace_pvs > 1] = 1
+        self.dataspace_pvs_clipped = tf.clip_by_value(self.dataspace_pvs, 0.01, 1)
+        self.dataspace_pv_upweight = 1/self.dataspace_pvs_clipped
+
         if kwargs.get("initial_posterior", None):
             raise NotImplementedError()
             #self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
         else:
             self.post_init = None
 
-    def _change_space(self, projector, tensor, pv_sum=False):
+    def _change_space(self, projector, tensor, upweight=None):
         """
         Convert model space data into source data space
         """
@@ -69,33 +85,58 @@ class DataModel(LogBase):
         timeseries_input = tf.rank(tensor) == 3
         if vector_input:
             tensor = tf.expand_dims(tensor, -1)
-        
+
         if timeseries_input:
+            if upweight is not None:
+                upweight = tf.expand_dims(upweight, -1) # [V/W, 1, 1]
+                upweight = tf.expand_dims(upweight, -1) # [V/W, 1, 1]
             ret = []
             for t in range(tensor.shape[2]):
-                ret.append(projector(tensor[..., t], pv_sum))
+                ret.append(projector(tensor[..., t]))
             ret = tf.stack(ret, axis=2)
         else:
-            ret = projector(tensor, pv_sum)
+            if upweight is not None:
+                upweight = tf.expand_dims(upweight, -1) # [V/W, 1]
+            ret = projector(tensor)
+
+        if upweight is not None:
+            ret *= upweight
 
         if vector_input:
             ret = tf.reshape(ret, [-1])
 
         return ret
 
-    def model_to_data(self, tensor, pv_sum=False):
+    def model_to_data(self, tensor, pv_scale=False):
         """
         Convert model space data into source data space
         """
-        return self._change_space(self.model2data, tensor, pv_sum)
+        tensor_data = self._change_space(self.model2data, tensor)
+        if not pv_scale:
+            # If this data does *not* naturally scale with PV we need to 
+            # upweight data space estimates for voxels with partial volume <1
+            upweight = self.dataspace_pv_upweight
+            while tf.rank(tensor_data) > tf.rank(upweight):
+                upweight = tf.expand_dims(upweight, -1)
+            tensor_data *= upweight
+        return tensor_data
 
-    def data_to_model(self, tensor, pv_sum=False):
+    def data_to_model(self, tensor, pv_scale=False):
         """
         Convert source data space data into model space
         """
-        return self._change_space(self.data2model, tensor, pv_sum)
+        if pv_scale:
+            # If this data scales with PV we need to upweight the model space
+            # estimates (on the assumption that 'empty' space in a voxel 
+            # contributes zero)
+            upweight = self.dataspace_pv_upweight
+            while tf.rank(tensor) > tf.rank(upweight):
+                upweight = tf.expand_dims(upweight, -1)
+            tensor *= upweight
+        tensor_model = self._change_space(self.data2model, tensor)
+        return tensor_model
 
-    def save_model_data(self, data, name, output, save_model=True, save_native=False, **kwargs):
+    def save_model_data(self, data, name, output, save_model=True, save_native=False, pv_scale=False, **kwargs):
         """
         Save data defined in model space
 
@@ -108,7 +149,7 @@ class DataModel(LogBase):
         if save_model:
             self.model_space.save_data(data, name, output)
         if save_native:
-            self.data_space.save_data(self.model_to_data(data), name, output)
+            self.data_space.save_data(self.model_to_data(data, pv_scale), name, output)
 
     def encode_posterior(self, mean, cov):
         """

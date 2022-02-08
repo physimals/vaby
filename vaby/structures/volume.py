@@ -24,7 +24,7 @@ class Volume(DataStructure):
       - srcdata.n_tpts: Number of timepoints in source data
       - srcdata.flat: Masked source data as 2D Numpy array
     """
-    def __init__(self, vol_data=None, mask=None, pv_vol=None, nii=None, voxel_sizes=None, file_ext=".nii.gz", **kwargs):
+    def __init__(self, vol_data=None, mask=None, nii=None, voxel_sizes=None, file_ext=".nii.gz", **kwargs):
         DataStructure.__init__(self, file_ext=file_ext, **kwargs)
         self.log.info("Volumetric data structure: %s" % self.name)
         self.log.info(" - File extension: %s" % self.file_ext)
@@ -89,13 +89,14 @@ class Volume(DataStructure):
         self._calc_adjacency_matrix()
         self._calc_laplacian()
 
-    def _identity_projection(self, tensor, pv_sum):
-        return tensor
-
     def get_projection(self, data_space):
         try:
             self.check_compatible(data_space)
-            return (self._identity_projection, self._identity_projection)
+            
+            def _identity_projection(tensor):
+                return tensor
+
+            return (_identity_projection, _identity_projection)
         except:
             import traceback
             traceback.print_exc()
@@ -255,11 +256,11 @@ class PartialVolumes(Volume):
     def get_projection(self, data_space):
         try:
             self.check_compatible(data_space)
-            def _model2data(tensor, pv_sum=False):
+            def _model2data(tensor):
                 return tensor * self.pvs
 
-            def _data2model(tensor, pv_sum=False):
-                return tensor * self.pvs
+            def _data2model(tensor):
+                return tensor
 
             return _model2data, _data2model
         except:

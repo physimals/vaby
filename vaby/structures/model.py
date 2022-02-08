@@ -39,16 +39,16 @@ class ModelSpace(DataStructure):
     def get_projection(self, data_space):
         projectors = [p.get_projection(data_space) for p in self.parts]
 
-        def model2data(tensor, pv_sum=False):
+        def model2data(tensor):
             tensor_data = []
             for proj, slc in zip(projectors, self.slices):
-                tensor_data.append(proj[0](tensor[slc, ...], pv_sum)) # [V, T]
+                tensor_data.append(proj[0](tensor[slc, ...])) # [V, T]
             return sum(tensor_data) # [V, T]
 
-        def data2model(tensor, pv_sum=False):
+        def data2model(tensor):
             tensor_model = []
             for proj in projectors:
-                tensor_model.append(proj[1](tensor, pv_sum)) # [w, T]
+                tensor_model.append(proj[1](tensor)) # [w, T]
             return tf.concat(tensor_model, axis=0) # [W, T]
 
         return model2data, data2model

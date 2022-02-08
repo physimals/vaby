@@ -64,7 +64,7 @@ class SimpleSurface(DataStructure):
         #self.laplacian = self._scipy_to_tf_sparse(self.srcdata.geom.mesh_laplacian())
         self.laplacian = self.srcdata.geom.mesh_laplacian()
 
-    def _identity_projection(self, tensor, pv_sum):
+    def _identity_projection(self, tensor):
         return tensor
 
     def get_projection(self, data_space):
@@ -143,9 +143,7 @@ class CorticalSurface(DataStructure):
 
         proj_matrices = {
             "n2v" : projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
-            "n2v_noedge" : projector.surf2vol_matrix(edge_scale=False).astype(NP_DTYPE),
-            "v2n" : projector.vol2surf_matrix(edge_scale=True).astype(NP_DTYPE),
-            "v2n_noedge" : projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
+            "v2n" : projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
         }
 
         # Knock out voxels from projection matrices that are not in the mask
@@ -166,21 +164,11 @@ class CorticalSurface(DataStructure):
         if data_space.size != proj_tensors["n2v"].shape[0]:
             raise ValueError('Acquisition data size does not match projector')
 
-        def _surf2vol(tensor, pv_sum=False):
-            if pv_sum:
-                proj = proj_tensors["n2v"]
-            else:
-                proj = proj_tensors["n2v_noedge"]
+        def _surf2vol(tensor):
+            return tf.sparse.sparse_dense_matmul(proj_tensors["n2v"], tensor)
 
-            return tf.sparse.sparse_dense_matmul(proj, tensor)
-
-        def _vol2surf(tensor, pv_sum=False):
-            if pv_sum:
-                proj = proj_tensors["v2n"]
-            else:
-                proj = proj_tensors["v2n_noedge"]
-
-            return tf.sparse.sparse_dense_matmul(proj, tensor)
+        def _vol2surf(tensor):
+            return tf.sparse.sparse_dense_matmul(proj_tensors["v2n"], tensor)
 
         return (_surf2vol, _vol2surf)
 

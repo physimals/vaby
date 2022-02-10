@@ -65,7 +65,6 @@ def run(data, model_name, output, method, **kwargs):
     
     # Create the generative model
     fwd_model = get_model_class(model_name)(data_model, **kwargs)
-    fwd_model.log_config()
 
     # Check that any parameter overrides actually match parameters in the model
     #assert_param_overrides_used(fwd_model.params, kwargs)

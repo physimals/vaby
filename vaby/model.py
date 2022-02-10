@@ -76,6 +76,7 @@ class Model(LogBase):
         self.params = []
         for option in self.options():
             setattr(self, option.attr_name, kwargs.get(option.attr_name, option.default))
+        self.log_config(kwargs.get("log", None))
 
     def log_config(self, log=None):
         """

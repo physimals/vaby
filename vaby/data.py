@@ -59,9 +59,9 @@ class DataModel(LogBase):
         self.dataspace_pv_upweight = None
         self.dataspace_pvs = self.model_to_data(np.ones([self.model_space.size], dtype=NP_DTYPE), pv_scale=True)
         if np.any(self.dataspace_pvs > 1.0001):
-            self.log.warn("Model space has partial volumes > 1 (worst: %f)" % np.max(self.dataspace_pvs))
+            self.log.warn(" - Model space has partial volumes > 1 (worst: %f)" % np.max(self.dataspace_pvs))
         else:
-            self.log.info("Model space partial volumes are all good")
+            self.log.info(" - Model space partial volumes are all good")
 
         #print(self.dataspace_pvs, self.dataspace_pvs.shape)
         #too_small = self.dataspace_pvs < 0.01
@@ -73,6 +73,7 @@ class DataModel(LogBase):
 
         if kwargs.get("initial_posterior", None):
             raise NotImplementedError()
+            #self.log.info("Loading initial posterior")
             #self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
         else:
             self.post_init = None
@@ -188,13 +189,13 @@ class DataModel(LogBase):
             # FIXME posterior should be defined in model space not data space
             post_data_arr = self.get_voxel_data(post_data)
             nvols = post_data_arr.shape[1]
-            self.log.info("Posterior image contains %i volumes" % nvols)
+            self.log.info(" - Posterior image contains %i volumes" % nvols)
 
             n_params = int((math.sqrt(1+8*float(nvols)) - 3) / 2)
             nvols_recov = (n_params+1)*(n_params+2) / 2
             if nvols != nvols_recov:
                 raise ValueError("Posterior input has %i volumes - not consistent with upper triangle of square matrix" % nvols)
-            self.log.info("Posterior image contains %i parameters", n_params)
+            self.log.info(" - Posterior image contains %i parameters", n_params)
             
             cov = np.zeros((self.model_space.size, n_params, n_params), dtype=NP_DTYPE)
             mean = np.zeros((self.model_space.size, n_params), dtype=NP_DTYPE)
@@ -210,5 +211,5 @@ class DataModel(LogBase):
             if not np.all(post_data_arr[:, vol_idx] == 1):
                 raise ValueError("Posterior input file - last volume does not contain 1.0")
 
-            self.log.info("Posterior mean shape: %s, cov shape: %s", mean.shape, cov.shape)
+            self.log.info(" - Posterior mean shape: %s, cov shape: %s", mean.shape, cov.shape)
             return mean, cov

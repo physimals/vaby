@@ -210,7 +210,7 @@ def setup_logging(outdir=".", **kwargs):
         level = getattr(logging, level.upper(), logging.INFO)
         logging.getLogger().setLevel(level)
 
-        if kwargs.get("save_log", False):
+        if outdir and kwargs.get("save_log", False):
             # Send the log to an output logfile
             makedirs(outdir, True)
             logfile = os.path.join(outdir, "logfile")

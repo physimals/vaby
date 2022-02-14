@@ -44,13 +44,14 @@ def main():
         import traceback
         traceback.print_exc()
 
-def run(data, model_name, output, method, **kwargs):
+def run(data, model_name, output=None, method="avb", **kwargs):
     """
     Run model fitting on a data set
 
     :param data: File name of 4D NIFTI data set containing data to be fitted
     :param model_name: Name of model we are fitting to
-    :param output: output directory, will be created if it does not exist
+    :param output: output directory, will be created if it does not exist. If not
+                   specified no filesystem output will be generated
     :param method: Inference method (avb, svb)
 
     All keyword arguments are passed to constructor of the model, the ``Svb``
@@ -81,7 +82,8 @@ def run(data, model_name, output, method, **kwargs):
     log.info("%s %s", method.upper(), __version__)
     rt = runtime(vb.run, **kwargs)
     log.info("DONE: %.3fs", rt)
-    vb.save(output, rt, **kwargs)
+    if output:
+        vb.save(output, rt, **kwargs)
 
     return rt, vb
 

@@ -10,6 +10,7 @@ except ImportError:
 from .data import DataModel
 from .model import Model, get_model_class
 from .main import run
+from .utils import NP_DTYPE, TF_DTYPE
 
 __all__ = [   "__version__",
     "__timestamp__",
@@ -17,4 +18,6 @@ __all__ = [   "__version__",
     "Model",
     "get_model_class",
     "run",
+    "NP_DTYPE",
+    "TF_DTYPE",
 ]

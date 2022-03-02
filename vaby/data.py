@@ -49,7 +49,6 @@ class DataModel(LogBase):
                     self.log.info(" - Found model structure: %s" % struc.name)
                     struc_list.append(struc)
                 else:
-                    self.log.info(" - Creating model structure")
                     struc_list.append(get_data_structure(**struc))
 
         self.model_space = ModelSpace(struc_list)

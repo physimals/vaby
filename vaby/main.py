@@ -69,7 +69,6 @@ def run(data, model_name, output=None, method="avb", **kwargs):
 
     # Check that any parameter overrides actually match parameters in the model
     #assert_param_overrides_used(fwd_model.params, kwargs)
-
     if method == "avb":
         from vaby_avb import Avb, __version__
         vb = Avb(data_model, fwd_model, **kwargs)

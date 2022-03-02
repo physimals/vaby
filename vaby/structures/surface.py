@@ -26,7 +26,7 @@ class SimpleSurface(DataStructure):
     Currently a simple surface cannot be projected onto a volume, however it is possible
     to model surface based acquisition data on a matching surface.
     """
-    def __init__(self, data, trigs=None, verts=None, geomdata=None, file_ext=".gii", **kwargs):
+    def __init__(self, data, trigs=None, verts=None, geomdata=None, file_ext=".func.gii", **kwargs):
         DataStructure.__init__(self, file_ext=file_ext, **kwargs)
         if toblerone is None:
             raise RuntimeError("Toblerone not installed - cannot create cortical surface structure")
@@ -104,7 +104,7 @@ class CorticalSurface(DataStructure):
     right and left hemispheres, potentially additionally with volumetric subcortical white matter
     """
 
-    def __init__(self, white, pial, file_ext=".gii", **kwargs):
+    def __init__(self, white, pial, file_ext=".func.gii", **kwargs):
         """
         :param left: Tuple of (LWS, LPS) where LWS and LPS are filenames or nibabel.Gifti1Image instances
                      containing the white and pial surfaces for the left hemisphere
@@ -121,6 +121,7 @@ class CorticalSurface(DataStructure):
         self.log.info("Cortical surface structure")
         self.hemisphere = Hemisphere(Surface(white, self.name + "WS"), Surface(pial, self.name + "PS"), self.name)
         self.size = self.hemisphere.n_points
+
         self.log.info(f" - {self.size} vertices")
         self.projector = kwargs.get("projector", None)
         if isinstance(self.projector, str):
@@ -133,17 +134,16 @@ class CorticalSurface(DataStructure):
     def get_projection(self, data_space):
         if self.projector is None:
             self.log.info("Generating projector - this may take some time...")
-            projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
-            projector.save("vaby_proj.h5")
+            self.projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
+            self.projector.save("vaby_proj.h5")
             self.log.info("Projector generated")
         else:
             if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
                 raise ValueError("Projector supplied is not defined on same image space as acquisition data")
-            projector = self.projector
 
         proj_matrices = {
-            "n2v" : projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
-            "v2n" : projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
+            "n2v" : self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
+            "v2n" : self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
         }
 
         # Knock out voxels from projection matrices that are not in the mask

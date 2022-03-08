@@ -17,30 +17,30 @@ class DataModel(LogBase):
 
     Two spaces are defined: 
 
-    :ival data_space: DataStructure defining acquisition data space
+    :ival data_space: DataStructure defining native data space
     :ival model_space: DataStructure defining modelling data space. This may be
                        identical to data space, a different kind of space (e.g.
                        surface), or a composite space containing multiple 
                        independent structures.
-    :ival projector: Tuple of callables that can convert data between acquisition
+    :ival projector: Tuple of callables that can convert data between native
                      and model space. The first converts model space tensors to
-                     acquisition space, the second goes the other way.
+                     native space, the second goes the other way.
     """
     MODEL_SPACE = "model space"
-    DATA_SPACE = "data space"
+    DATA_SPACE = "native space"
 
     def __init__(self, data, **kwargs):
         LogBase.__init__(self)
 
-        ### Acquisition data space
-        self.log.info("Creating acquisition data structure")
-        self.data_space = get_data_structure(data=data, name="acquisition", **kwargs)
+        ### Native (acquisition) data space
+        self.log.info("Creating native data structure")
+        self.data_space = get_data_structure(data=data, name="native", **kwargs)
 
         ### Model space
         self.log.info("Creating model inference data structure")
         model_structures = kwargs.get("model_structures", None)
         if not model_structures:
-            self.log.info(" - Model structure is same as acquisition structure")
+            self.log.info(" - Model structure is same as native structure")
             struc_list = [self.data_space]
         else:
             struc_list = []
@@ -144,7 +144,7 @@ class DataModel(LogBase):
         :param name: Name for save data
         :param outdir: Output directory
         :param save_model: If True, save each data in separate file for each model structure
-        :param save_native: If True, save data transformed into acquisition data space
+        :param save_native: If True, save data transformed into native data space
         """
         if save_model:
             self.model_space.save_data(data, name, output)

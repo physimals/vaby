@@ -91,7 +91,7 @@ class DataModel(LogBase):
                 upweight = tf.expand_dims(upweight, -1) # [V/W, 1, 1]
                 upweight = tf.expand_dims(upweight, -1) # [V/W, 1, 1]
             ret = []
-            for t in range(tensor.shape[2]):
+            for t in range(tf.shape(tensor)[2]):
                 ret.append(projector(tensor[..., t]))
             ret = tf.stack(ret, axis=2)
         else:

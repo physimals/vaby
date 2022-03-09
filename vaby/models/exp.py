@@ -23,17 +23,18 @@ class MultiExpModel(Model):
             self.params += [
                 get_parameter("amp%i" % (idx+1), 
                               dist="LogNormal", mean=1.0, 
-                              prior_var=1e6, post_var=1.5, 
+                              prior_var=1e3, post_var=1.5, 
                               post_init=self._init_amp,
                               **options),
                 get_parameter("r%i" % (idx+1), 
                               dist="LogNormal", mean=1.0, 
-                              prior_var=1e6, post_var=1.5,
+                              prior_var=1e3, post_var=1.5,
                               **options),
             ]
 
     def _init_amp(self, _param, data):
-        return tf.reduce_max(data, axis=1) / self.num_exps, None
+        amp_init = tf.reduce_max(data, axis=1) / self.num_exps
+        return self.data_model.data_to_model(amp_init), None
 
     def evaluate(self, params, tpts):
         ret = None

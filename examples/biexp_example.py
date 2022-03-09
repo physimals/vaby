@@ -1,15 +1,10 @@
 """
-Example inferring multiple exponential decay models arranged into a
-4D voxelwise image.
-
-This example uses the main() interface as used by the command line
-application to simplify running the inference and saving the output
+Example inferring a single biexponential decay model
 """
 import argparse
 import sys
 
 import numpy as np
-import nibabel as nib
 import tensorflow as tf
 
 import vaby 
@@ -27,7 +22,7 @@ cli.add_argument("--noise", help="Ground truth noise amplitude (std dev)", type=
 cli.add_argument("--rseed", help="Random number seed to give reproducible results", type=int)
 cli.add_argument("--debug", help="Debug logging", action="store_true", default=False)
 cli.add_argument("--fabber", help="Run Fabber as a comparison", action="store_true", default=False)
-#cli.add_argument("--plot", help="Show output graphically", action="store_true", default=False)
+cli.add_argument("--plot", help="Show output graphically", action="store_true", default=False)
 opts = cli.parse_args()
 
 if opts.rseed:
@@ -45,30 +40,24 @@ print("Ground truth: a=%s, r=%s, noise=%f (std.dev.)" % (PARAMS_TRUTH[::2], PARA
 # Gaussian distribution. Reducing the number of samples should make
 # the inference less 'confident' - i.e. the output variances for
 # MU and BETA will increase
-NX = int(opts.size**(1.0/3))
-NY, NZ = NX, NX
-print(f"Dimensions of volume: {NX}x{NY}x{NZ} - actual number of samples: {NX*NY*NX}")
-
-t = np.array([float(t)*opts.dt for t in range(opts.nt)])
-params_voxelwise = np.tile(np.array(PARAMS_TRUTH)[..., np.newaxis, np.newaxis], (1, NX*NY*NZ, 1))
 temp_model = vaby.get_model_class("biexp")(None, dt=opts.dt)
-DATA_CLEAN = temp_model.evaluate(params_voxelwise, t).numpy()
-DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, DATA_CLEAN.shape)
-niidata = DATA_NOISY.reshape((NX, NY, NZ, opts.nt))
-nii = nib.Nifti1Image(niidata, np.identity(4))
-nii.to_filename("data_biexp_noisy.nii.gz")
+t = np.array([float(t)*opts.dt for t in range(opts.nt)])
+DATA_CLEAN = temp_model.evaluate(PARAMS_TRUTH, t).numpy()
+DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, [opts.nt])
 
 if opts.fabber:
     import os
-    os.system("fabber_exp --data=data_biexp_noisy  --max-iterations=20 --output=exps_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --noise=white --save-model-fit --overwrite" % opts.dt)
+    import nibabel as nib
+    niidata = DATA_NOISY.reshape((1, 1, 1, opts.nt))
+    nii = nib.Nifti1Image(niidata, np.identity(4))
+    nii.to_filename("data_noisy.nii.gz")
+    os.system("fabber_exp --data=data_noisy --print-free-energy --save-model-fit --output=exp_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --max-iterations=50 --noise=white --overwrite --debug" % opts.dt)
+    fabber_modelfit = nib.load("exp_example_fabber_out/modelfit.nii.gz").get_fdata().reshape([opts.nt])
 
 options = {
     "method" : opts.method,
     "dt" : opts.dt,
-    "save_mean" : True,
-    "save_model_fit" : True,
     "debug" : opts.debug,
-    "save_log" : True,
     "log_stream" : sys.stdout,
 }
 
@@ -84,4 +73,16 @@ elif opts.method == "avb":
         "max_iterations" : 200,
     })
 
-runtime, inf = vaby.run("data_biexp_noisy.nii.gz", "biexp", f"biexp_example_{opts.method}_out", **options)
+runtime, inf = vaby.run(DATA_NOISY, "biexp", **options)
+
+if opts.plot:
+    from matplotlib import pyplot as plt
+    plt.figure(1)
+    plt.title("Example inference of biexponential")
+    plt.plot(t, DATA_CLEAN, "b-", label="Ground truth")
+    plt.plot(t, DATA_NOISY, "kx", label="Noisy samples", )
+    plt.plot(t, inf.modelfit[0], "g--", label="Model fit")
+    if opts.fabber:
+        plt.plot(t, fabber_modelfit, "r--", label="Fabber model fit")
+    plt.legend()
+    plt.show()

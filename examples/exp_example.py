@@ -1,15 +1,12 @@
 """
-Example of usage of the AVB framework to infer a single exponential decay
+Example of usage of the vaby framework to infer a single exponential decay
 model.
-
-This uses the Python classes directly to infer the parameters for a single
-instance of noisy data constructed as a Numpy array.
 """
 import argparse
 import sys
-import logging
 
 import numpy as np
+import tensorflow as tf
 
 import vaby
 
@@ -28,6 +25,7 @@ opts = cli.parse_args()
 
 if opts.rseed:
     np.random.seed(opts.rseed)
+    tf.random.set_seed(opts.rseed)
 
 # Ground truth parameters
 PARAMS_TRUTH = [opts.amp, opts.rate]
@@ -54,35 +52,28 @@ if opts.fabber:
     os.system("fabber_exp --data=data_noisy --print-free-energy --save-model-fit --output=exp_example_fabber_out --dt=%.3f --model=exp --num-exps=1 --method=vb --max-iterations=50 --noise=white --overwrite --debug" % opts.dt)
     fabber_modelfit = nib.load("exp_example_fabber_out/modelfit.nii.gz").get_fdata().reshape([opts.nt])
 
-# Log to stdout
-if opts.debug:
-    logging.basicConfig(level=logging.DEBUG)
-else:
-    logging.basicConfig(level=logging.INFO)
-
 # Run inference
 data_model = vaby.DataModel(DATA_NOISY)
 fwd_model = vaby.get_model_class("exp")(data_model, dt=opts.dt)
 
 inference_options = {
-    "debug" : opts.debug
+    "method" : opts.method,
+    "dt" : opts.dt,
+    "debug" : opts.debug,
+    "log_stream" : sys.stdout,
 }
 if opts.method == "svb":
-    from vaby_svb import Svb
-    inf = Svb(data_model, fwd_model)
     inference_options.update({
         "epochs" : 300,
         "learning_rate" : 0.1,
         "sample_size" : 10,
     })
 else:
-    from vaby_avb import Avb
-    inf = Avb(data_model, fwd_model)
     inference_options.update({
         "max_iterations" : 20,
     })
 
-inf.run(**inference_options)
+runtime, inf = vaby.run(DATA_NOISY, "exp", **inference_options)
 
 if opts.plot:
     from matplotlib import pyplot as plt

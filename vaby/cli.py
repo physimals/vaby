@@ -39,6 +39,8 @@ class ArgumentParser(argparse.ArgumentParser):
         group.add_argument("--help", action="store_true", default=False, help="Display help")
         
         group = self.add_argument_group("Output options")
+        group.add_argument("--log-avg",
+                         help="Type of average to report in iteration logs (mean or median)", default="mean")
         group.add_argument("--save-var",
                          help="Save parameter variance",
                          action="store_true", default=False)

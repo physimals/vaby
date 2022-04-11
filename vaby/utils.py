@@ -54,6 +54,15 @@ class InferenceMethod(LogBase):
         if self.tpts.shape[1] != self.n_tpts:
             raise ValueError("Time points has length %i, but data has %i volumes" % (self.tpts.shape[1], self.n_tpts))
 
+        # What type of average to log
+        log_avg = kwargs.get("log_avg", "mean").lower().strip()
+        if log_avg == "mean":
+            self.log_avg = np.mean
+        elif log_avg == "median":
+            self.log_avg = np.median#
+        else:
+            raise ValueError("Unknown log average: %s" % log_avg)
+        
     @property
     def data(self):
         """

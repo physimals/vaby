@@ -8,7 +8,7 @@ import nibabel as nib
 from scipy import sparse
 import tensorflow as tf
 
-from ..utils import NP_DTYPE
+from ..utils import NP_DTYPE, TF_DTYPE
 from .base import DataStructure
 
 class Volume(DataStructure):
@@ -89,18 +89,17 @@ class Volume(DataStructure):
         self._calc_adjacency_matrix()
         self._calc_laplacian()
 
-    def get_projection(self, data_space):
+    def model2data(self, tensor, data_space):
         try:
             self.check_compatible(data_space)
-            
-            def _identity_projection(tensor):
-                return tensor
-
-            return (_identity_projection, _identity_projection)
+            return tensor
         except:
             import traceback
             traceback.print_exc()
             raise NotImplementedError("Projection between different volume spaces")
+
+    def data2model(self, tensor, data_space):
+        return self.model2data(tensor, data_space)
 
     def check_compatible(self, struc):
         """
@@ -253,15 +252,25 @@ class PartialVolumes(Volume):
 
             self.pvs = pv_vol[self.mask]
 
-    def get_projection(self, data_space):
+    def model2data(self, tensor, data_space):
+        """
+        FIXME The mask for the PVs may differ from the data space?
+        """
         try:
-            self.check_compatible(data_space)
-            def _model2data(tensor):
-                return tensor * self.pvs
+            if self.shape != data_space.shape:
+                raise NotImplementedError("Projection between volume spaces of different shape: %s vs %s" % (self.shape, data_space.shape))
+            
+            return tensor * self.pvs
+        except:
+            raise NotImplementedError("Projection between different volume spaces")
 
-            def _data2model(tensor):
-                return tensor
+    def data2model(self, tensor, data_space):
+        try:
+            if self.shape != data_space.shape:
+                raise NotImplementedError("Projection between volume spaces of different shape: %s vs %s" % (self.shape, data_space.shape))
 
-            return _model2data, _data2model
+            #pv_mask = tf.where(self.pvs > 0.05, 1.0, 0.0) 
+            #return tensor * pv_mask
+            return tensor
         except:
             raise NotImplementedError("Projection between different volume spaces")

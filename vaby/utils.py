@@ -112,15 +112,7 @@ class InferenceMethod(LogBase):
         """
         return self.data_model.data_space.srcdata.n_tpts
 
-    def finalize(self):
-        """
-        Make output tensors into Numpy arrays
-        """
-        for attr in ("model_mean", "model_var", "noise_mean", "noise_var", "modelfit"):
-            if hasattr(self, attr):
-                setattr(self, attr, getattr(self, attr).numpy())
-
-    def save(self, outdir, rt=None, **kwargs):
+    def save(self, outdir, state, rt=None, **kwargs):
         """
         Save output to directory
 
@@ -131,8 +123,8 @@ class InferenceMethod(LogBase):
         
         # Write out parameter mean and variance images
         # FIXME pv_scale for variance / std?
-        mean = self.model_mean
-        variances = self.model_var
+        mean = state["model_mean"]
+        variances = state["model_var"]
         for idx, param in enumerate(self.params):
             if kwargs.get("save_mean", False):
                 self.data_model.save_model_data(mean[idx], "mean_%s" % param.name, outdir, pv_scale=param.pv_scale, **kwargs)
@@ -143,15 +135,15 @@ class InferenceMethod(LogBase):
 
         if kwargs.get("save_noise", False):
             if kwargs.get("save_mean", False):
-                self.data_model.data_space.save_data(self.noise_mean, "mean_noise", outdir)
+                self.data_model.data_space.save_data(state["noise_mean"], "mean_noise", outdir)
             if kwargs.get("save_var", False):
-                self.data_model.data_space.save_data(self.noise_var, "var_noise", outdir)
+                self.data_model.data_space.save_data(state["noise_var"], "var_noise", outdir)
             if kwargs.get("save_std", False):
-                self.data_model.data_space.save_data(np.sqrt(self.noise_var), "std_noise", outdir)
+                self.data_model.data_space.save_data(np.sqrt(state["noise_var"]), "std_noise", outdir)
 
         # Write out modelfit
         if kwargs.get("save_model_fit", False):
-            self.data_model.save_model_data(self.modelfit, "modelfit", outdir, pv_scale=True, **kwargs)
+            self.data_model.save_model_data(state["modelfit"], "modelfit", outdir, pv_scale=True, **kwargs)
 
         # Total model space partial volumes in data space
         if kwargs.get("save_total_pv", False):

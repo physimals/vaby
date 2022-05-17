@@ -4,8 +4,6 @@ VABY - Model parameters
 A parameter is a variable in the model which can be fitted to the data.
 It has a prior distribution and an initial posterior. 
 """
-import tensorflow as tf
-   
 from .utils import LogBase
 from . import dist
 

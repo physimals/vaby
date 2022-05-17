@@ -5,7 +5,7 @@ from scipy import sparse
 import tensorflow as tf
 
 from .base import DataStructure
-from ..utils import NP_DTYPE
+from ..utils import NP_DTYPE, TF_DTYPE
 
 class ModelSpace(DataStructure):
     """
@@ -36,24 +36,23 @@ class ModelSpace(DataStructure):
         self.adj_matrix = sparse.block_diag([p.adj_matrix for p in self.parts]).astype(NP_DTYPE)
         self.laplacian = sparse.block_diag([p.laplacian for p in self.parts]).astype(NP_DTYPE)
 
-    def get_projection(self, data_space):
-        projectors = [p.get_projection(data_space) for p in self.parts]
+    @tf.function
+    def model2data(self, tensor, data_space):#
+        tensor_data = tf.TensorArray(TF_DTYPE, size=self.num_strucs)
+        for idx, part in enumerate(self.parts):
+            pt = part.model2data(tensor[self.slices[idx], ...], data_space)
+            tensor_data = tensor_data.write(idx, pt) # [V, T]
+        return tf.reduce_sum(tensor_data.stack(), axis=0) # [V, T]
 
-        def model2data(tensor):
-            tensor_data = []
-            for proj, slc in zip(projectors, self.slices):
-                tensor_data.append(proj[0](tensor[slc, ...])) # [V, T]
-            return sum(tensor_data) # [V, T]
+    @tf.function
+    def data2model(self, tensor, data_space):
+        tensor_model = tf.TensorArray(TF_DTYPE, size=self.num_strucs, infer_shape=False)
+        for idx, part in enumerate(self.parts):
+            pt = part.data2model(tensor, data_space)
+            tensor_model = tensor_model.write(idx, pt) # [w, T]
+        return tensor_model.concat() # [W, T]
 
-        def data2model(tensor):
-            tensor_model = []
-            for proj in projectors:
-                tensor_model.append(proj[1](tensor)) # [w, T]
-            return tf.concat(tensor_model, axis=0) # [W, T]
-
-        return model2data, data2model
-
-    def split(self, tensor, axis):
+    def split(self, tensor, axis=0):
         """
         Split a tensor into sub-structure parts
 

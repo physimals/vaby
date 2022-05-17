@@ -79,12 +79,12 @@ def run(data, model_name, output=None, method="avb", **kwargs):
         raise ValueError("Unknown inference method: %s" % method)
 
     log.info("%s %s", method.upper(), __version__)
-    rt = runtime(vb.run, **kwargs)
+    rt, state = runtime(vb.run, **kwargs)
     log.info("DONE: %.3fs", rt)
     if output:
-        vb.save(output, rt, **kwargs)
+        vb.save(output, state, rt, **kwargs)
 
-    return rt, vb
+    return rt, state
 
 if __name__ == "__main__":
     main()

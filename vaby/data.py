@@ -7,7 +7,7 @@ import collections
 import numpy as np
 import tensorflow as tf
 
-from .utils import LogBase, NP_DTYPE
+from .utils import LogBase, NP_DTYPE, TF_DTYPE
 from .structures import get_data_structure, DataStructure, ModelSpace
 
 class DataModel(LogBase):
@@ -52,23 +52,6 @@ class DataModel(LogBase):
                     struc_list.append(get_data_structure(**struc))
 
         self.model_space = ModelSpace(struc_list)
-        self.model2data, self.data2model = self.model_space.get_projection(self.data_space)
-
-        # Calculate the total partial volume of the model space in each data space voxel
-        self.dataspace_pv_upweight = None
-        self.dataspace_pvs = self.model_to_data(np.ones([self.model_space.size], dtype=NP_DTYPE), pv_scale=True)
-        if np.any(self.dataspace_pvs > 1.0001):
-            self.log.warn(" - Model space has partial volumes > 1 (worst: %f)" % np.max(self.dataspace_pvs))
-        else:
-            self.log.info(" - Model space partial volumes are all good")
-
-        #print(self.dataspace_pvs, self.dataspace_pvs.shape)
-        #too_small = self.dataspace_pvs < 0.01
-        #print(too_small, too_small.shape)
-        #self.dataspace_pvs[self.dataspace_pvs < 0.01] = 1
-        #self.dataspace_pvs[self.dataspace_pvs > 1] = 1
-        self.dataspace_pvs_clipped = tf.clip_by_value(self.dataspace_pvs, 0.01, 1)
-        self.dataspace_pv_upweight = 1/self.dataspace_pvs_clipped
 
         if kwargs.get("initial_posterior", None):
             raise NotImplementedError()
@@ -77,7 +60,19 @@ class DataModel(LogBase):
         else:
             self.post_init = None
 
-    def _change_space(self, projector, tensor, upweight=None):
+        self.dataspace_pvs = self.get_total_pvs()
+        if np.any(self.dataspace_pvs.numpy() > 1.0001):
+            self.log.warn(" - Model space has partial volumes > 1 (worst: %f)" % np.max(dataspace_pvs))
+        else:
+            self.log.info(" - Model space partial volumes are all good")
+        self.upweights = 1/np.clip(self.dataspace_pvs, 0.01, 1)
+
+    def get_total_pvs(self):
+        # Calculate the total partial volume of the model space in each data space voxel
+        dataspace_pvs = self.model_to_data(np.ones([self.model_space.size], dtype=NP_DTYPE), pv_scale=True)
+        return dataspace_pvs
+
+    def _change_space(self, projector, tensor):
         """
         Convert model space data into source data space
         """
@@ -87,20 +82,14 @@ class DataModel(LogBase):
             tensor = tf.expand_dims(tensor, -1)
 
         if timeseries_input:
-            if upweight is not None:
-                upweight = tf.expand_dims(upweight, -1) # [V/W, 1, 1]
-                upweight = tf.expand_dims(upweight, -1) # [V/W, 1, 1]
-            ret = []
-            for t in range(tf.shape(tensor)[2]):
-                ret.append(projector(tensor[..., t]))
-            ret = tf.stack(ret, axis=2)
+            nt = tf.shape(tensor)[2]
+            ret = tf.TensorArray(TF_DTYPE, size=nt)
+            for t in range(nt):
+                tpt = projector(tensor[..., t], self.data_space)
+                ret = ret.write(t, tpt)
+            ret = tf.transpose(ret.stack(), [1, 2, 0])
         else:
-            if upweight is not None:
-                upweight = tf.expand_dims(upweight, -1) # [V/W, 1]
-            ret = projector(tensor)
-
-        if upweight is not None:
-            ret *= upweight
+            ret = projector(tensor, self.data_space)
 
         if vector_input:
             ret = tf.reshape(ret, [-1])
@@ -111,13 +100,12 @@ class DataModel(LogBase):
         """
         Convert model space data into source data space
         """
-        tensor_data = self._change_space(self.model2data, tensor)
+        tensor_data = self._change_space(self.model_space.model2data, tensor)
         if not pv_scale:
             # If this data does *not* naturally scale with PV we need to 
             # upweight data space estimates for voxels with partial volume <1
-            upweight = self.dataspace_pv_upweight
-            while tf.rank(tensor_data) > tf.rank(upweight):
-                upweight = tf.expand_dims(upweight, -1)
+            upweight = self.upweights
+            upweight = tf.broadcast_to(upweight, tf.shape(tensor_data))
             tensor_data *= upweight
         return tensor_data
 
@@ -129,11 +117,10 @@ class DataModel(LogBase):
             # If this data scales with PV we need to upweight the model space
             # estimates (on the assumption that 'empty' space in a voxel 
             # contributes zero)
-            upweight = self.dataspace_pv_upweight
-            while tf.rank(tensor) > tf.rank(upweight):
-                upweight = tf.expand_dims(upweight, -1)
+            upweight = self.upweights
+            upweight = tf.broadcast_to(upweight, tf.shape(tensor))
             tensor *= upweight
-        tensor_model = self._change_space(self.data2model, tensor)
+        tensor_model = self._change_space(self.model_space.data2model, tensor)
         return tensor_model
 
     def save_model_data(self, data, name, output, save_model=True, save_native=False, pv_scale=False, **kwargs):

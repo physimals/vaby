@@ -131,46 +131,50 @@ class CorticalSurface(DataStructure):
         self.adj_matrix = self.hemisphere.adjacency_matrix()
         self.laplacian = self.hemisphere.mesh_laplacian()
 
-    def get_projection(self, data_space):
+    def _generate_projector(self, data_space):
         if self.projector is None:
             self.log.info("Generating projector - this may take some time...")
             self.projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
             self.projector.save("vaby_proj.h5")
             self.log.info("Projector generated")
         else:
-            if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
-                raise ValueError("Projector supplied is not defined on same image space as acquisition data")
+            pass
+            #if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
+            #    raise ValueError("Projector supplied is not defined on same image space as acquisition data")
 
-        proj_matrices = {
-            "n2v" : self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE),
-            "v2n" : self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE),
-        }
+        #if data_space.size != proj_tensors["n2v"].shape[0]:
+        #    raise ValueError('Acquisition data size does not match projector')
+
+    def model2data(self, tensor, data_space):
+        self._generate_projector(data_space)
+
+        n2v = self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE)
 
         # Knock out voxels from projection matrices that are not in the mask
-        # and convert to sparse tensors
-        proj_tensors = {}
         vox_inds = np.flatnonzero(data_space.mask)
-        for name, mat in proj_matrices.items():
-            if name.startswith("n2v"):
-                masked_mat = mat.tocsr()[vox_inds, :].tocoo()
-            else:
-                masked_mat = mat.tocsr()[:, vox_inds].tocoo()
-            proj_tensors[name] = tf.SparseTensor(
-                indices=np.array([masked_mat.row, masked_mat.col]).T,
-                values=masked_mat.data,
-                dense_shape=masked_mat.shape,
-            )
+        masked_mat = n2v.tocsr()[vox_inds, :].tocoo()
+        proj_tensor = tf.SparseTensor(
+            indices=np.array([masked_mat.row, masked_mat.col]).T,
+            values=masked_mat.data,
+            dense_shape=masked_mat.shape,
+        )
+        return tf.sparse.sparse_dense_matmul(proj_tensor, tensor)
 
-        if data_space.size != proj_tensors["n2v"].shape[0]:
-            raise ValueError('Acquisition data size does not match projector')
+    def data2model(self, tensor, data_space):
+        self._generate_projector(data_space)
 
-        def _surf2vol(tensor):
-            return tf.sparse.sparse_dense_matmul(proj_tensors["n2v"], tensor)
+        v2n = self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE)
+        
+        # Knock out voxels from projection matrices that are not in the mask
+        vox_inds = np.flatnonzero(data_space.mask)
+        masked_mat = v2n.tocsr()[:, vox_inds].tocoo()
+        proj_tensor = tf.SparseTensor(
+            indices=np.array([masked_mat.row, masked_mat.col]).T,
+            values=masked_mat.data,
+            dense_shape=masked_mat.shape,
+        )
 
-        def _vol2surf(tensor):
-            return tf.sparse.sparse_dense_matmul(proj_tensors["v2n"], tensor)
-
-        return (_surf2vol, _vol2surf)
+        return tf.sparse.sparse_dense_matmul(proj_tensor, tensor)
 
     def load_data(self, data, **kwargs):
         raise NotImplementedError()

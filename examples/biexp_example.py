@@ -54,6 +54,7 @@ options = {
     "save_total_pv" : True,
     "save_native" : True,
     "save_model" : True,
+    "output" : "biexp_example_out",
     "debug" : opts.debug,
     "log_stream" : sys.stdout,
 }
@@ -78,7 +79,7 @@ if opts.fabber:
     niidata = DATA_NOISY.reshape((1, 1, 1, opts.nt))
     nii = nib.Nifti1Image(niidata, np.identity(4))
     nii.to_filename("data_noisy.nii.gz")
-    os.system("fabber_exp --data=data_noisy --print-free-energy --save-model-fit --output=exp_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --max-iterations=50 --noise=white --overwrite --debug" % opts.dt)
+    os.system("fabber_exp --data=data_noisy --print-free-energy --save-model-fit --output=biexp_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --max-iterations=50 --noise=white --overwrite --debug" % opts.dt)
     fabber_modelfit = nib.load("exp_example_fabber_out/modelfit.nii.gz").get_fdata().reshape([opts.nt])
 
 if opts.plot:

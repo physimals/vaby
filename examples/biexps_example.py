@@ -4,6 +4,7 @@ Example inferring multiple biexponential decay models arranged into a
 """
 import argparse
 import sys
+import os
 
 import numpy as np
 import nibabel as nib
@@ -30,6 +31,32 @@ if opts.rseed:
     np.random.seed(opts.rseed)
     tf.random.set_seed(opts.rseed)
 
+options = {
+    "method" : opts.method,
+    "dt" : opts.dt,
+    "save_mean" : True,
+    "save_model_fit" : True,
+    "debug" : opts.debug,
+    "save_log" : True,
+    "output" : f"biexps_example_{opts.method}_out",
+    "log_stream" : sys.stdout,
+}
+
+if opts.method == "svb":
+    options.update({
+        "epochs" : 300,
+        "learning_rate" : 0.1,
+        "sample_size" : 5,
+        "batch_size" : 10,
+    })
+elif opts.method == "avb":
+    options.update({
+        "max_iterations" : 200,
+    })
+
+if not os.path.exists(options["output"]):
+    os.makedirs(options["output"])
+
 # Ground truth parameters
 PARAMS_TRUTH = [opts.amp1, opts.rate1, opts.amp2, opts.rate2]
 NOISE_STD_TRUTH = opts.noise
@@ -50,34 +77,19 @@ params_voxelwise = np.tile(np.array(PARAMS_TRUTH)[..., np.newaxis, np.newaxis], 
 temp_model = vaby.get_model_class("biexp")(None, dt=opts.dt)
 DATA_CLEAN = temp_model.evaluate(params_voxelwise, t).numpy()
 DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, DATA_CLEAN.shape)
+
+# Save clean and noisy data
+niidata = DATA_CLEAN.reshape((NX, NY, NZ, opts.nt))
+nii = nib.Nifti1Image(niidata, np.identity(4))
+nii.to_filename(os.path.join(options["output"], "data_biexp_clean.nii.gz"))
 niidata = DATA_NOISY.reshape((NX, NY, NZ, opts.nt))
 nii = nib.Nifti1Image(niidata, np.identity(4))
-nii.to_filename("data_biexp_noisy.nii.gz")
+nii.to_filename(os.path.join(options["output"], "data_biexp_noisy.nii.gz"))
+
+input_data = os.path.join(options["output"], "data_biexp_noisy.nii.gz")
 
 if opts.fabber:
     import os
-    os.system("fabber_exp --data=data_biexp_noisy  --max-iterations=20 --output=exps_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --noise=white --save-model-fit --overwrite" % opts.dt)
+    os.system(f"fabber_exp --data={input_data}  --max-iterations=20 --output=biexps_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --noise=white --save-model-fit --overwrite" % opts.dt)
 
-options = {
-    "method" : opts.method,
-    "dt" : opts.dt,
-    "save_mean" : True,
-    "save_model_fit" : True,
-    "debug" : opts.debug,
-    "save_log" : True,
-    "log_stream" : sys.stdout,
-}
-
-if opts.method == "svb":
-    options.update({
-        "epochs" : 300,
-        "learning_rate" : 0.1,
-        "sample_size" : 5,
-        "batch_size" : 10,
-    })
-elif opts.method == "avb":
-    options.update({
-        "max_iterations" : 200,
-    })
-
-runtime, inf = vaby.run("data_biexp_noisy.nii.gz", "biexp", f"biexp_example_{opts.method}_out", **options)
+runtime, inf = vaby.run(input_data, "biexp", **options)

@@ -45,18 +45,15 @@ t = np.array([float(t)*opts.dt for t in range(opts.nt)])
 DATA_CLEAN = temp_model.evaluate(PARAMS_TRUTH, t).numpy()
 DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, [opts.nt])
 
-if opts.fabber:
-    import os
-    import nibabel as nib
-    niidata = DATA_NOISY.reshape((1, 1, 1, opts.nt))
-    nii = nib.Nifti1Image(niidata, np.identity(4))
-    nii.to_filename("data_noisy.nii.gz")
-    os.system("fabber_exp --data=data_noisy --print-free-energy --save-model-fit --output=exp_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --max-iterations=50 --noise=white --overwrite --debug" % opts.dt)
-    fabber_modelfit = nib.load("exp_example_fabber_out/modelfit.nii.gz").get_fdata().reshape([opts.nt])
-
 options = {
     "method" : opts.method,
     "dt" : opts.dt,
+    "save_mean" : True,
+    "save_model_fit" : True,
+    "save_input_data" : True,
+    "save_total_pv" : True,
+    "save_native" : True,
+    "save_model" : True,
     "debug" : opts.debug,
     "log_stream" : sys.stdout,
 }
@@ -74,6 +71,15 @@ elif opts.method == "avb":
     })
 
 runtime, inf = vaby.run(DATA_NOISY, "biexp", **options)
+
+if opts.fabber:
+    import os
+    import nibabel as nib
+    niidata = DATA_NOISY.reshape((1, 1, 1, opts.nt))
+    nii = nib.Nifti1Image(niidata, np.identity(4))
+    nii.to_filename("data_noisy.nii.gz")
+    os.system("fabber_exp --data=data_noisy --print-free-energy --save-model-fit --output=exp_example_fabber_out --dt=%.3f --model=exp --num-exps=2 --method=vb --max-iterations=50 --noise=white --overwrite --debug" % opts.dt)
+    fabber_modelfit = nib.load("exp_example_fabber_out/modelfit.nii.gz").get_fdata().reshape([opts.nt])
 
 if opts.plot:
     from matplotlib import pyplot as plt

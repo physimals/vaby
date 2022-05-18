@@ -105,7 +105,8 @@ class DataModel(LogBase):
             # If this data does *not* naturally scale with PV we need to 
             # upweight data space estimates for voxels with partial volume <1
             upweight = self.upweights
-            upweight = tf.broadcast_to(upweight, tf.shape(tensor_data))
+            for _ in range(tf.rank(tensor_data)-1):
+                upweight = upweight[..., np.newaxis]
             tensor_data *= upweight
         return tensor_data
 
@@ -118,7 +119,8 @@ class DataModel(LogBase):
             # estimates (on the assumption that 'empty' space in a voxel 
             # contributes zero)
             upweight = self.upweights
-            upweight = tf.broadcast_to(upweight, tf.shape(tensor))
+            for _ in range(tf.rank(tensor)-1):
+                upweight = upweight[..., np.newaxis]
             tensor *= upweight
         tensor_model = self._change_space(self.model_space.data2model, tensor)
         return tensor_model

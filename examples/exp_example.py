@@ -73,7 +73,7 @@ else:
         "max_iterations" : 20,
     })
 
-runtime, inf = vaby.run(DATA_NOISY, "exp", **inference_options)
+runtime, state = vaby.run(DATA_NOISY, "exp", **inference_options)
 
 if opts.plot:
     from matplotlib import pyplot as plt
@@ -81,7 +81,7 @@ if opts.plot:
     plt.title("Example inference of single exponential")
     plt.plot(t, DATA_CLEAN, "b-", label="Ground truth")
     plt.plot(t, DATA_NOISY, "kx", label="Noisy samples", )
-    plt.plot(t, inf.modelfit[0], "g--", label="Model fit")
+    plt.plot(t, state["modelfit"][0], "g--", label="Model fit")
     if opts.fabber:
         plt.plot(t, fabber_modelfit, "r--", label="Fabber model fit")
     plt.legend()

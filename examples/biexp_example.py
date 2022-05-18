@@ -71,7 +71,7 @@ elif opts.method == "avb":
         "max_iterations" : 200,
     })
 
-runtime, inf = vaby.run(DATA_NOISY, "biexp", **options)
+runtime, state = vaby.run(DATA_NOISY, "biexp", **options)
 
 if opts.fabber:
     import os
@@ -88,7 +88,7 @@ if opts.plot:
     plt.title("Example inference of biexponential")
     plt.plot(t, DATA_CLEAN, "b-", label="Ground truth")
     plt.plot(t, DATA_NOISY, "kx", label="Noisy samples", )
-    plt.plot(t, inf.modelfit[0], "g--", label="Model fit")
+    plt.plot(t, state["modelfit"][0], "g--", label="Model fit")
     if opts.fabber:
         plt.plot(t, fabber_modelfit, "r--", label="Fabber model fit")
     plt.legend()

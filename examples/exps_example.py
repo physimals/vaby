@@ -4,6 +4,7 @@ Example inferring multiple exponential decay models arranged into a
 """
 import argparse
 import sys
+import os
 
 import numpy as np
 import nibabel as nib
@@ -46,9 +47,6 @@ params_voxelwise = np.tile(np.array(PARAMS_TRUTH)[..., np.newaxis, np.newaxis], 
 temp_model = vaby.get_model_class("exp")(None, dt=opts.dt)
 DATA_CLEAN = temp_model.evaluate(params_voxelwise, t).numpy()
 DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, DATA_CLEAN.shape)
-niidata = DATA_NOISY.reshape((NX, NY, NZ, opts.nt))
-nii = nib.Nifti1Image(niidata, np.identity(4))
-nii.to_filename("data_exp_noisy.nii.gz")
 
 if opts.fabber:
     import os
@@ -62,6 +60,7 @@ options = {
     "save_model_fit" : True,
     "save_log" : True,
     "debug" : opts.debug,
+    "output" : "exps_example_out",
     "log_stream" : sys.stdout,
 }
 
@@ -76,4 +75,7 @@ elif opts.method == "avb":
         "max_iterations" : 20,
     })
 
-runtime, inf = vaby.run("data_exp_noisy.nii.gz", "exp", "exps_example_out", **options)
+niidata = DATA_NOISY.reshape((NX, NY, NZ, opts.nt))
+nii = nib.Nifti1Image(niidata, np.identity(4))
+nii.to_filename(os.path.join(options["output"], "data_exp_noisy.nii.gz"))
+runtime, state = vaby.run("exps_example_out/data_exp_noisy.nii.gz", "exp", **options)

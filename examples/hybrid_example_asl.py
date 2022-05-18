@@ -12,6 +12,8 @@ import scipy.interpolate
 import tensorflow as tf
 import nibabel as nib
 import pyvista as pv
+import matplotlib.pyplot as plt 
+import seaborn as sns
 
 import vaby
 from vaby_models_asl import AslRestModel 
@@ -25,12 +27,12 @@ cli.add_argument("--wm-att", help="Ground truth WM ATT", type=float, default=1.6
 cli.add_argument("--gm-att", help="Ground truth cortical ATT", type=float, default=1.3)
 cli.add_argument("--plds", help="PLDs", default="0.75, 1.0, 1.25, 1.5, 1.75, 2.0")
 cli.add_argument("--repeats", help="Number of repeats", type=int, default=1)
-cli.add_argument("--cort-inner", help="Gifti file containing cortex inner surface", default="tk/103818.L.mid.32k_fs_LR.surf.gii")
-cli.add_argument("--cort-outer", help="Gifti file containing cortex outer surface", default="tk/103818.L.very_inflated.32k_fs_LR.surf.gii")
-cli.add_argument("--cort-inflated", help="Gifti file containing cortex inflated surface", default="tk/103818.L.very_inflated.32k_fs_LR.surf.gii")
-cli.add_argument("--projector", help="Pre-computed projection file", default="tk/103818_L_hemi.h5")
-cli.add_argument("--wm-pvs", help="Nifti file containing WM partial volumes", default="tk/wm_pv.nii.gz")
-cli.add_argument("--mask", help="Nifti file containing analysis mask", default="tk/mask.nii.gz")
+cli.add_argument("--cort-inner", help="Gifti file containing cortex inner surface", default="cortical_data/103818.L.mid.32k_fs_LR.surf.gii")
+cli.add_argument("--cort-outer", help="Gifti file containing cortex outer surface", default="cortical_data/103818.L.very_inflated.32k_fs_LR.surf.gii")
+cli.add_argument("--cort-inflated", help="Gifti file containing cortex inflated surface", default="cortical_data/103818.L.very_inflated.32k_fs_LR.surf.gii")
+cli.add_argument("--projector", help="Pre-computed projection file", default="cortical_data/103818_L_hemi.h5")
+cli.add_argument("--wm-pvs", help="Nifti file containing WM partial volumes", default="cortical_data/wm_pv.nii.gz")
+cli.add_argument("--mask", help="Nifti file containing analysis mask", default="cortical_data/mask.nii.gz")
 cli.add_argument("--noise", help="Ground truth noise amplitude (std dev)", type=float, default=5)
 cli.add_argument("--spatial", help="Use spatial smoothing on CBF", action="store_true", default=False)
 cli.add_argument("--epochs", help="Number of epochs for SVB", type=int, default=300)
@@ -40,6 +42,8 @@ cli.add_argument("--iterations", help="Number of iterations for AVB", type=int, 
 cli.add_argument("--rseed", help="Random number seed to give reproducible results", type=int)
 cli.add_argument("--debug", help="Debug logging", action="store_true", default=False)
 cli.add_argument("--plot", help="Show output graphically", action="store_true", default=False)
+cli.add_argument("--histogram", help="Show comparative histograms", action="store_true", default=False)
+cli.add_argument("--output", help="Output dir name")
 opts = cli.parse_args()
 
 if opts.rseed:
@@ -75,10 +79,20 @@ options={
             "mask" : opts.mask,
         },
     ],
+    "output" : opts.output,
     "debug" : opts.debug,
     "save_log" : True,
     "log_stream" : sys.stdout,   
 }
+
+# Make sure we have an output directory as we need to save input data as well
+if not opts.output:
+    if opts.spatial:
+        options["output"] = f"hybrid_asl_example_{opts.method}_spatial_out"
+    else:
+        options["output"] = f"hybrid_asl_example_{opts.method}_nonspatial_out"
+if not os.path.exists(options["output"]):
+    os.makedirs(options["output"])
 
 # Create data model for simulating data. Note that the acquisition data is just
 # used to define the acquisition data space so doesn't need to be a proper timeseries
@@ -104,27 +118,37 @@ ctx_sine = scipy.interpolate.interpn(
         values=sine, 
         xi=inflated.points,
     )
-ctx_cbf = opts.gm_cbf + (opts.gm_cbf_var * ctx_sine)
-ctx_att = opts.gm_att * np.ones_like(ctx_cbf)
+cbf_ctx_true = opts.gm_cbf + (opts.gm_cbf_var * ctx_sine)
+att_ctx_true = opts.gm_att * np.ones_like(cbf_ctx_true)
 
 # Generate simulated model data
 asl_model = AslRestModel(data_model, **options)
 tpts = asl_model.tpts()
 wm_size = data_model.model_space.parts[1].size
+cbf_wm_true = opts.wm_cbf * np.ones(wm_size)
+att_wm_true = opts.wm_att * np.ones(wm_size)
 
-cbf = np.concatenate([ctx_cbf, opts.wm_cbf * np.ones(wm_size)])[..., np.newaxis].astype(np.float32)
-att = np.concatenate([ctx_att, opts.wm_att * np.ones(wm_size)])[..., np.newaxis].astype(np.float32)
-data = asl_model.evaluate([cbf, att], tpts)
+cbf_true = np.concatenate([cbf_ctx_true, cbf_wm_true])[..., np.newaxis].astype(np.float32)
+att_true = np.concatenate([att_ctx_true, att_wm_true])[..., np.newaxis].astype(np.float32)
+data = asl_model.evaluate([cbf_true, att_true], tpts)
+
+# Save noiseless ground truth timeseries, CBF and ATT
+data_model.save_model_data(data.numpy(), "hybrid_example_asl_data_clean", options['output'], save_model=True, save_native=True, pv_scale=True)
+data_model.save_model_data(np.squeeze(cbf_true), "true_ftiss", options["output"], save_native=True, pv_scale=True)
+data_model.save_model_data(np.squeeze(att_true), "true_delttiss", options["output"], save_native=True, pv_scale=False)
 
 # Add noise in acquisition space
-noise_std_truth = opts.noise
-noise_var_truth = noise_std_truth**2
-noise_prec_truth = 1/noise_var_truth
-#SNR = 100 # realistic is about 10 - 20
-#N_VAR = 42 * np.sqrt(len(opts.plds) * opts.repeats) / SNR 
 data_vol = data_model.model_to_data(data, pv_scale=True)
-data_vol += np.random.normal(0, noise_std_truth, data_vol.shape)
-data_model.data_space.save_data(data_vol, "hybrid_example_asl_data_noisy")
+if opts.noise > 0:
+    noise_std_truth = opts.noise
+    noise_var_truth = noise_std_truth**2
+    noise_prec_truth = 1/noise_var_truth
+    #SNR = 100 # realistic is about 10 - 20
+    #N_VAR = 42 * np.sqrt(len(opts.plds) * opts.repeats) / SNR 
+    data_vol += np.random.normal(0, noise_std_truth, data_vol.shape)
+
+# Save noisy data - this will be used as input
+data_model.data_space.save_data(data_vol, "hybrid_example_asl_data_noisy", options["output"])
 
 # Run inference
 if opts.method == "svb":
@@ -137,45 +161,20 @@ if opts.method == "svb":
 elif opts.method == "avb":
     options.update({
         "max_iterations" : opts.iterations,
+        "learning_rate" : opts.learning_rate,
+        #"avb_method" : "maxf",
+        "infer_ak" : False,
+        "ak" : 3.0,
     })
 
 if opts.spatial:
     options["param_overrides"] = {
         "ftiss" : {
             "prior_type" : "M",
+        },
+        "delttiss" : {
+            "prior_type" : "M",
         }
     }
-    options["output"] = f"hybrid_asl_example_{opts.method}_spatial_out"
-else:
-    options["output"] = f"hybrid_asl_example_{opts.method}_nonspatial_out"
 
-runtime, inf = vaby.run("hybrid_example_asl_data_noisy.nii.gz", "aslrest", **options)
-
-# Save noiseless ground truth timeseries
-data_model.save_model_data(data.numpy(), "hybrid_example_asl_data_clean", options['output'], save_model=True, save_native=True, pv_scale=True)
-
-# Save ground truth cortial CBF
-data_model.model_space.parts[0].save_data(ctx_cbf, 'true_ftiss', options['output'])
-
-# Plot true and predicted CBF
-if opts.plot:
-    faces = 3 * np.ones((inflated.tris.shape[0], 4), dtype=int)
-    faces[:,1:] = inflated.tris 
-
-    plotter = pv.Plotter(shape=(1, 2))
-
-    plotter.subplot(0, 0)
-    plotter.add_text("Estimated CBF", font_size=10)
-    cbf_output = nib.load(os.path.join(options["output"], 'mean_ftiss_L.func.gii')).darrays[0].data
-    plotter.add_mesh(pv.PolyData(inflated.points, faces=faces), scalars=cbf_output, clim=(0, 100), scalar_bar_args={'title': 'Estimated CBF'}, show_scalar_bar=True)
-    plotter.add_axes(interactive=True)
-
-    plotter.subplot(0, 1)
-    plotter.add_text("True CBF", font_size=10)
-    plotter.add_mesh(pv.PolyData(inflated.points, faces=faces), scalars=ctx_cbf, clim=(0, 100), scalar_bar_args={'title': 'True CBF'}, show_scalar_bar=True)
-    plotter.add_axes(interactive=True)
-
-    # Display the window
-    plotter.show()
-    #mesh.plot(color='lightgrey', clim=(0, 100), pbr=True, scalars=cbf_output, window_size=(600, 400))
-    #mesh.plot(color='lightgrey', clim=(0, 100), pbr=True, scalars=ctx_cbf, window_size=(600, 400))
+runtime, inf = vaby.run(os.path.join(options["output"], "hybrid_example_asl_data_noisy.nii.gz"), "aslrest", **options)

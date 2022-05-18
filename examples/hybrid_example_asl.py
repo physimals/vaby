@@ -88,9 +88,9 @@ options={
 # Make sure we have an output directory as we need to save input data as well
 if not opts.output:
     if opts.spatial:
-        options["output"] = f"hybrid_asl_example_{opts.method}_spatial_out"
+        options["output"] = f"hybrid_example_asl_{opts.method}_spatial_out"
     else:
-        options["output"] = f"hybrid_asl_example_{opts.method}_nonspatial_out"
+        options["output"] = f"hybrid_example_asl_{opts.method}_nonspatial_out"
 if not os.path.exists(options["output"]):
     os.makedirs(options["output"])
 

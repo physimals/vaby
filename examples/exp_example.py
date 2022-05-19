@@ -60,6 +60,7 @@ inference_options = {
     "method" : opts.method,
     "dt" : opts.dt,
     "debug" : opts.debug,
+    "output" : "exp_example_out",
     "log_stream" : sys.stdout,
 }
 if opts.method == "svb":

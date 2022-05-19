@@ -83,6 +83,15 @@ options={
     "log_stream" : sys.stdout,
 }
 
+# Make sure we have an output directory as we need to save input data as well
+if not opts.output:
+    if opts.spatial:
+        options["output"] = f"hybrid_example_sphere_{opts.method}_spatial_out"
+    else:
+        options["output"] = f"hybrid_example_sphere_{opts.method}_nonspatial_out"
+if not os.path.exists(options["output"]):
+    os.makedirs(options["output"])
+
 # Create data model for simulating data. Note that the acquisition data is just
 # used to define the acquisition data space so doesn't need to be a proper timeseries
 data_model = vaby.DataModel(opts.wm_pvs, **options)
@@ -143,7 +152,7 @@ if opts.noise > 0:
     #SNR = 100 # realistic is about 10 - 20
     #N_VAR = 42 * np.sqrt(len(opts.plds) * opts.repeats) / SNR 
     data_vol += np.random.normal(0, noise_std_truth, data_vol.shape)
-data_model.data_space.save_data(data_vol, "hybrid_example_asl_data_noisy")
+data_model.data_space.save_data(data_vol, "hybrid_example_sphere_data_noisy", options["output"])
 
 # Run inference
 if opts.method == "svb":
@@ -173,15 +182,11 @@ if opts.spatial:
             "prior_type" : "N",
         }
     }
-    if not options["output"]:
-        options["output"] = f"hybrid_asl_example_{opts.method}_spatial_out"
-elif not options["output"]:
-    options["output"] = f"hybrid_asl_example_{opts.method}_nonspatial_out"
 
-runtime, inf = vaby.run("hybrid_example_asl_data_noisy.nii.gz", "aslrest", **options)
+runtime, inf = vaby.run(os.path.join(options["output"], "hybrid_example_sphere_data_noisy.nii.gz"), "aslrest", **options)
 
 # Save noiseless ground truth timeseries
-data_model.save_model_data(data.numpy(), "hybrid_example_asl_data_clean", options['output'], save_model=True, save_native=True, pv_scale=True)
+data_model.save_model_data(data.numpy(), "hybrid_example_sphere_data_clean", options['output'], save_model=True, save_native=True, pv_scale=True)
 
 # Save ground truth CBF and ATT
 data_model.save_model_data(np.squeeze(cbf_true), "true_ftiss", options["output"], save_native=True, pv_scale=True)

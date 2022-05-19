@@ -47,24 +47,26 @@ params_voxelwise = np.tile(np.array(PARAMS_TRUTH)[..., np.newaxis, np.newaxis], 
 temp_model = vaby.get_model_class("exp")(None, dt=opts.dt)
 DATA_CLEAN = temp_model.evaluate(params_voxelwise, t).numpy()
 DATA_NOISY = DATA_CLEAN + np.random.normal(0, NOISE_STD_TRUTH, DATA_CLEAN.shape)
-giidata = DATA_NOISY.reshape([nvertices, opts.nt,])
-arr = nib.gifti.GiftiDataArray(giidata.astype(np.float32))
-gii = nib.GiftiImage(darrays=[arr])
-gii.to_filename("data_exp_noisy.gii")
 
 options = {
     "method" : opts.method,
     "surface" : opts.surface,
     "dt" : opts.dt,
+    "param_overrides" : {
+        "amp1" : {
+            "prior_type" : "M",
+        }
+    },
     "save_mean" : True,
     "debug" : opts.debug,
     "save_log" : True,
+    "output" : "surface_example_out",
     "log_stream" : sys.stdout,
 }
 
 if opts.method == "svb":
     options.update({
-        "epochs" : 500,
+        "epochs" : 200,
         "learning_rate" : 0.1,
         "sample_size" : 5, 
     })
@@ -73,4 +75,14 @@ elif opts.method == "avb":
         "max_iterations" : 20,
     })
 
-runtime, inf = vaby.run("data_exp_noisy.gii", "exp", "exps_example_out", **options)
+runtime, state = vaby.run("surface_example_out/data_exp_noisy.gii", "exp", **options)
+
+giidata = DATA_NOISY.reshape([nvertices, opts.nt,])
+arr = nib.gifti.GiftiDataArray(giidata.astype(np.float32))
+gii = nib.GiftiImage(darrays=[arr])
+gii.to_filename("surface_example_out/data_exp_noisy.gii")
+
+giidata = DATA_CLEAN.reshape([nvertices, opts.nt,])
+arr = nib.gifti.GiftiDataArray(giidata.astype(np.float32))
+gii = nib.GiftiImage(darrays=[arr])
+gii.to_filename("surface_example_out/data_exp_clean.gii")

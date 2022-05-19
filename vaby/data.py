@@ -22,9 +22,6 @@ class DataModel(LogBase):
                        identical to data space, a different kind of space (e.g.
                        surface), or a composite space containing multiple 
                        independent structures.
-    :ival projector: Tuple of callables that can convert data between native
-                     and model space. The first converts model space tensors to
-                     native space, the second goes the other way.
     """
     MODEL_SPACE = "model space"
     DATA_SPACE = "native space"
@@ -32,11 +29,11 @@ class DataModel(LogBase):
     def __init__(self, data, **kwargs):
         LogBase.__init__(self)
 
-        ### Native (acquisition) data space
+        # Native (acquisition) data space
         self.log.info("Creating native data structure")
         self.data_space = get_data_structure(data=data, name="native", **kwargs)
 
-        ### Model space
+        # Model space
         self.log.info("Creating model inference data structure")
         model_structures = kwargs.get("model_structures", None)
         if not model_structures:
@@ -50,27 +47,16 @@ class DataModel(LogBase):
                     struc_list.append(struc)
                 else:
                     struc_list.append(get_data_structure(**struc))
-
         self.model_space = ModelSpace(struc_list)
 
-        if kwargs.get("initial_posterior", None):
-            raise NotImplementedError()
-            #self.log.info("Loading initial posterior")
-            #self.post_init = self._get_posterior_data(kwargs["initial_posterior"])
-        else:
-            self.post_init = None
-
-        self.dataspace_pvs = self.get_total_pvs()
+        # Calculate the total partial volume of the model space in each data space voxel
+        # and warn if we have values significantly > 1
+        self.dataspace_pvs = self.model_to_data(np.ones([self.model_space.size], dtype=NP_DTYPE), pv_scale=True)
         if np.any(self.dataspace_pvs.numpy() > 1.0001):
-            self.log.warn(" - Model space has partial volumes > 1 (worst: %f)" % np.max(dataspace_pvs))
+            self.log.warn(" - Model space has partial volumes > 1 (worst: %f)" % np.max(self.dataspace_pvs))
         else:
             self.log.info(" - Model space partial volumes are all good")
         self.upweights = 1/np.clip(self.dataspace_pvs, 0.01, 1)
-
-    def get_total_pvs(self):
-        # Calculate the total partial volume of the model space in each data space voxel
-        dataspace_pvs = self.model_to_data(np.ones([self.model_space.size], dtype=NP_DTYPE), pv_scale=True)
-        return dataspace_pvs
 
     def _change_space(self, projector, tensor):
         """
@@ -154,6 +140,10 @@ class DataModel(LogBase):
 
         :return: a nodewise data array containing the mean and covariance for the posterior
         """
+        while mean.ndim < 2:
+            mean = mean[..., np.newaxis]
+        while cov.ndim < 3:
+            cov = cov[..., np.newaxis]
         if cov.shape[0] != self.model_space.size or mean.shape[0] != self.model_space.size:
             raise ValueError("Posterior data has %i nodes - inconsistent with model containing %i nodes" % (cov.shape[0], self.model_space.size))
 
@@ -171,33 +161,34 @@ class DataModel(LogBase):
         """
         Convert possibly encoded posterior data array into tuple of mean, covariance
         """
+        if isinstance(post_data, str):
+            post_data = self.model_space.load_data(post_data)
+
         if isinstance(post_data, collections.Sequence):
             return tuple(post_data)
-        else:
-            # FIXME posterior should be defined in model space not data space
-            post_data_arr = self.get_voxel_data(post_data)
-            nvols = post_data_arr.shape[1]
-            self.log.info(" - Posterior image contains %i volumes" % nvols)
 
-            n_params = int((math.sqrt(1+8*float(nvols)) - 3) / 2)
-            nvols_recov = (n_params+1)*(n_params+2) / 2
-            if nvols != nvols_recov:
-                raise ValueError("Posterior input has %i volumes - not consistent with upper triangle of square matrix" % nvols)
-            self.log.info(" - Posterior image contains %i parameters", n_params)
-            
-            cov = np.zeros((self.model_space.size, n_params, n_params), dtype=NP_DTYPE)
-            mean = np.zeros((self.model_space.size, n_params), dtype=NP_DTYPE)
-            vol_idx = 0
-            for row in range(n_params):
-                for col in range(row+1):
-                    cov[:, row, col] = post_data_arr[:, vol_idx]
-                    cov[:, col, row] = post_data_arr[:, vol_idx]
-                    vol_idx += 1
-            for row in range(n_params):
-                mean[:, row] = post_data_arr[:, vol_idx]
+        nvols = post_data.shape[1]
+        self.log.info(" - Posterior image contains %i volumes" % nvols)
+
+        n_params = int((math.sqrt(1+8*float(nvols)) - 3) / 2)
+        nvols_recov = (n_params+1)*(n_params+2) / 2
+        if nvols != nvols_recov:
+            raise ValueError("Posterior input has %i volumes - not consistent with upper triangle of square matrix" % nvols)
+        self.log.info(" - Posterior image contains %i parameters", n_params)
+        
+        cov = np.zeros((self.model_space.size, n_params, n_params), dtype=NP_DTYPE)
+        mean = np.zeros((self.model_space.size, n_params), dtype=NP_DTYPE)
+        vol_idx = 0
+        for row in range(n_params):
+            for col in range(row+1):
+                cov[:, row, col] = post_data[:, vol_idx]
+                cov[:, col, row] = post_data[:, vol_idx]
                 vol_idx += 1
-            if not np.all(post_data_arr[:, vol_idx] == 1):
-                raise ValueError("Posterior input file - last volume does not contain 1.0")
+        for row in range(n_params):
+            mean[:, row] = post_data[:, vol_idx]
+            vol_idx += 1
+        if not np.all(post_data[:, vol_idx] == 1):
+            raise ValueError("Posterior input file - last volume does not contain 1.0")
 
-            self.log.info(" - Posterior mean shape: %s, cov shape: %s", mean.shape, cov.shape)
-            return mean, cov
+        self.log.info(" - Posterior mean shape: %s, cov shape: %s", mean.shape, cov.shape)
+        return mean, cov

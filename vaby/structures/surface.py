@@ -64,13 +64,17 @@ class SimpleSurface(DataStructure):
         #self.laplacian = self._scipy_to_tf_sparse(self.srcdata.geom.mesh_laplacian())
         self.laplacian = self.srcdata.geom.mesh_laplacian()
 
-    def _identity_projection(self, tensor):
-        return tensor
-
-    def get_projection(self, data_space):
+    def model2data(self, tensor, data_space):
         try:
             self.check_compatible(data_space)
-            return (self._identity_projection, self._identity_projection)
+            return tensor
+        except:
+            raise NotImplementedError("Projection between different simple surface spaces")
+
+    def data2model(self, tensor, data_space):
+        try:
+            self.check_compatible(data_space)
+            return tensor
         except:
             raise NotImplementedError("Projection between different simple surface spaces")
 

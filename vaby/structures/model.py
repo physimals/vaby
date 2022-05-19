@@ -2,6 +2,7 @@
 VABY - Class defining the structure of model space
 """
 from scipy import sparse
+import numpy as np
 import tensorflow as tf
 
 from .base import DataStructure
@@ -65,6 +66,16 @@ class ModelSpace(DataStructure):
             slices[axis] = slc
             ret[struc.name] = tensor[slices]
         return ret
+
+    def load_data(self, fname, **kwargs):
+        # FIXME this isn't going to work with multiple structures because of filenames
+        full_data = None
+        for struct, slc in zip(self.parts, self.slices):
+            part_data = struct.load_data(fname)
+            if full_data is None:
+                full_data = np.zeros((self.size, part_data.shape[1]), dtype=NP_DTYPE)
+            full_data[slc, :] = part_data
+        return full_data
 
     def save_data(self, data, name, outdir="."):
         for struct, slc in zip(self.parts, self.slices):

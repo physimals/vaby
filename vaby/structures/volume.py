@@ -118,7 +118,7 @@ class Volume(DataStructure):
 
     def load_data(self, data, **kwargs):
         from . import get_data_structure # Avoid circular import
-        data_struc = get_data_structure(data, **kwargs)
+        data_struc = get_data_structure(data=data, **kwargs)
         data_struc.check_compatible(self)
         return data_struc.srcdata.flat
 

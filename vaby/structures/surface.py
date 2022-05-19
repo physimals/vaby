@@ -141,18 +141,14 @@ class CorticalSurface(DataStructure):
             self.projector = toblerone.Projector(self.hemisphere, regtricks.ImageSpace(data_space.srcdata.nii), factor=10, cores=8)
             self.projector.save("vaby_proj.h5")
             self.log.info("Projector generated")
-        else:
-            pass
-            #if self.projector.spc != regtricks.ImageSpace(data_space.srcdata.nii):
-            #    raise ValueError("Projector supplied is not defined on same image space as acquisition data")
-
-        #if data_space.size != proj_tensors["n2v"].shape[0]:
-        #    raise ValueError('Acquisition data size does not match projector')
 
     def model2data(self, tensor, data_space):
         self._generate_projector(data_space)
-
         n2v = self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE)
+        if data_space.size != n2v.shape[0]:
+            raise ValueError('Acquisition data size does not match projector')
+        if self.size != n2v.shape[1]:
+            raise ValueError('Model size does not match projector')
 
         # Knock out voxels from projection matrices that are not in the mask
         vox_inds = np.flatnonzero(data_space.mask)
@@ -168,7 +164,13 @@ class CorticalSurface(DataStructure):
         self._generate_projector(data_space)
 
         v2n = self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE)
-        
+        #if tf.shape(tensor)[0] != v2n.shape[1]:
+        #    raise ValueError('Tensor size does not match projector')
+        if data_space.size != v2n.shape[1]:
+            raise ValueError('Acquisition data size does not match projector')
+        if self.size != v2n.shape[0]:
+            raise ValueError('Model size does not match projector')
+
         # Knock out voxels from projection matrices that are not in the mask
         vox_inds = np.flatnonzero(data_space.mask)
         masked_mat = v2n.tocsr()[:, vox_inds].tocoo()

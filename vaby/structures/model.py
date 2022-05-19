@@ -38,7 +38,7 @@ class ModelSpace(DataStructure):
         self.laplacian = sparse.block_diag([p.laplacian for p in self.parts]).astype(NP_DTYPE)
 
     @tf.function
-    def model2data(self, tensor, data_space):#
+    def model2data(self, tensor, data_space):
         tensor_data = tf.TensorArray(TF_DTYPE, size=self.num_strucs)
         for idx, part in enumerate(self.parts):
             pt = part.model2data(tensor[self.slices[idx], ...], data_space)

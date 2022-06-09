@@ -83,6 +83,15 @@ class Log(Identity):
     Log-transform used for log-normal distribution
     """
     def __init__(self, geom=True):
+        """
+        :param geom: If True, interpret specified mean/variance as
+                     'geometric' mean and variance with straightforward
+                     log/exp transformation to the underlying Gaussian
+                     distribution. If False, use conversion formulae
+                     for arithmetic mean/variance of log-normal 
+                     distribution (see, for example,
+                     https://uk.mathworks.com/help/stats/lognstat.html
+        """
         self._geom = geom
 
     def int_values(self, ext_values, ns=tf.math):
@@ -92,7 +101,6 @@ class Log(Identity):
         if self._geom:
             return ns.log(ext_mean), ns.log(ext_var)
         else:
-            # See https://uk.mathworks.com/help/stats/lognstat.html
             return ns.log(ext_mean**2/ns.sqrt(ext_var + ext_mean**2)), ns.log(ext_var/ext_mean**2 + 1)
 
     def ext_values(self, int_values, ns=tf.math):
@@ -102,8 +110,7 @@ class Log(Identity):
         if self._geom:
             return ns.exp(int_mean), ns.exp(int_var)
         else:
-            # FIXME this is wrong...
-            return ns.exp(int_mean), ns.exp(int_var)
+            return ns.exp(int_mean + int_var/2), ns.exp(2*int_mean + int_var)*(ns.exp(int_var)-1)
 
 class Abs(Identity):
     """

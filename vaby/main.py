@@ -44,7 +44,7 @@ def main():
         import traceback
         traceback.print_exc()
 
-def run(data, model_name, output=None, method="avb", **kwargs):
+def run(data, model_name, output=None, outdict=None, method="avb", **kwargs):
     """
     Run model fitting on a data set
 
@@ -52,6 +52,7 @@ def run(data, model_name, output=None, method="avb", **kwargs):
     :param model_name: Name of model we are fitting to
     :param output: output directory, will be created if it does not exist. If not
                    specified no filesystem output will be generated
+    :param outdict: output dictionary, if specified output will be stored in this dictionary
     :param method: Inference method (avb, svb)
 
     All keyword arguments are passed to constructor of the model, the ``Svb``
@@ -81,8 +82,7 @@ def run(data, model_name, output=None, method="avb", **kwargs):
     log.info("%s %s", method.upper(), __version__)
     rt, state = runtime(vb.run, **kwargs)
     log.info("DONE: %.3fs", rt)
-    if output:
-        vb.save(output, state, rt, **kwargs)
+    vb.save(state, outdir=output, outdict=outdict, runtime=rt, **kwargs)
 
     return rt, state
 

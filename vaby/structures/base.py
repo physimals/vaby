@@ -65,7 +65,7 @@ class DataStructure(LogBase):
         """
         raise NotImplementedError()
 
-    def save_data(self, data, name, outdir="."):
+    def save_data(self, data, name, **kwargs):
         """
         Save data defined in this data space
         
@@ -74,4 +74,8 @@ class DataStructure(LogBase):
         :param name: Name for saved data
         :param outdir: Output directory
         """
-        self.nibabel_image(data).to_filename(os.path.join(outdir, name) + self.file_ext)
+        img = self.nibabel_image(data)
+        if kwargs.get("outdir", None) is not None:
+            img.to_filename(os.path.join(kwargs["outdir"], name) + self.file_ext)
+        if kwargs.get("outdict", None) is not None:
+            kwargs["outdict"][name] = img

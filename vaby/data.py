@@ -111,20 +111,20 @@ class DataModel(LogBase):
         tensor_model = self._change_space(self.model_space.data2model, tensor)
         return tensor_model
 
-    def save_model_data(self, data, name, output, save_model=True, save_native=False, pv_scale=False, **kwargs):
+    def save_model_data(self, data, name, save_model=True, save_native=False, pv_scale=False, **kwargs):
         """
         Save data defined in model space
 
         :param data: Numpy array whose first dimension corresponds to model nodes
         :param name: Name for save data
-        :param outdir: Output directory
         :param save_model: If True, save each data in separate file for each model structure
         :param save_native: If True, save data transformed into native data space
+        :param kwargs: ```outdir``` for directory to save to, ```outdict``` for dictionary to store in
         """
         if save_model:
-            self.model_space.save_data(data, name, output)
+            self.model_space.save_data(data, name, **kwargs)
         if save_native:
-            self.data_space.save_data(self.model_to_data(data, pv_scale), name, output)
+            self.data_space.save_data(self.model_to_data(data, pv_scale), name, **kwargs)
 
     def encode_posterior(self, mean, cov):
         """
@@ -157,15 +157,18 @@ class DataModel(LogBase):
         vols.append(np.ones(mean.shape[0]))
         return np.array(vols).transpose((1, 0))
 
-    def decode_posterior(self, post_data):
+    def decode_posterior(self, post_data, **kwargs):
         """
         Convert possibly encoded posterior data array into tuple of mean, covariance
         """
-        if isinstance(post_data, str):
-            post_data = self.model_space.load_data(post_data)
-
         if isinstance(post_data, collections.Sequence):
             return tuple(post_data)
+
+        if isinstance(post_data, np.ndarray) and post_data.ndim == 2:
+            # Posterior already appears to be in model space
+            pass
+        else:
+            post_data = self.model_space.load_data(post_data, **kwargs)
 
         nvols = post_data.shape[1]
         self.log.info(" - Posterior image contains %i volumes" % nvols)
@@ -175,7 +178,7 @@ class DataModel(LogBase):
         if nvols != nvols_recov:
             raise ValueError("Posterior input has %i volumes - not consistent with upper triangle of square matrix" % nvols)
         self.log.info(" - Posterior image contains %i parameters", n_params)
-        
+
         cov = np.zeros((self.model_space.size, n_params, n_params), dtype=NP_DTYPE)
         mean = np.zeros((self.model_space.size, n_params), dtype=NP_DTYPE)
         vol_idx = 0

@@ -71,12 +71,12 @@ class ModelSpace(DataStructure):
         # FIXME this isn't going to work with multiple structures because of filenames
         full_data = None
         for struct, slc in zip(self.parts, self.slices):
-            part_data = struct.load_data(fname)
+            part_data = struct.load_data(fname, **kwargs)
             if full_data is None:
                 full_data = np.zeros((self.size, part_data.shape[1]), dtype=NP_DTYPE)
             full_data[slc, :] = part_data
         return full_data
 
-    def save_data(self, data, name, outdir="."):
+    def save_data(self, data, name, **kwargs):
         for struct, slc in zip(self.parts, self.slices):
-            struct.save_data(data[slc, ...], name + "_" + struct.name, outdir)
+            struct.save_data(data[slc, ...], name + "_" + struct.name, **kwargs)

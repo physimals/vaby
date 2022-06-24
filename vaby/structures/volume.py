@@ -67,6 +67,12 @@ class Volume(DataStructure):
             mask = nib.load(mask).get_fdata().astype(int)
             if self.shape != list(mask.shape):
                 raise ValueError("Mask has different 3D shape to data: %s vs %s" % (self.shape, mask.shape))
+        elif isinstance(mask, nib.Nifti1Image):
+            mask = mask.get_fdata().astype(int)
+        elif isinstance(mask, np.ndarray):
+            mask = mask.astype(int)
+        else:
+            raise TypeError("Can't handle mask data of type: %s" % type(mask))
 
         self.mask = mask
         self.srcdata.flat = self.srcdata.vol[self.mask > 0]

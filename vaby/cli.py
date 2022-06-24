@@ -28,7 +28,7 @@ class ArgumentParser(argparse.ArgumentParser):
         group.add_argument("--data", help="Timeseries input data")
         group.add_argument("--mask", help="Optional voxel mask for volumetric data")
         group.add_argument("--surface", help="Surface geometry data for surface based input data")
-        group.add_argument("--initial-posterior", help="Initialize posterior from data file saved using --save-posterior")
+        group.add_argument("--initial-posterior", "--continue-from-mvn", help="Initialize posterior from data file saved using --save-posterior")
         group.add_argument("--initial-noise", help="Initialize noise from data file saved using --save-noise")
         group.add_argument("--model", dest="model_name", help="Model name")
         group.add_argument("--method", help="Inference method", choices=["avb", "svb"])
@@ -36,7 +36,7 @@ class ArgumentParser(argparse.ArgumentParser):
         group.add_argument("--log-level", help="Logging level", default="info")
         group.add_argument("--log-config", help="Optional logging configuration file, overrides --log-level")
         group.add_argument("--help", action="store_true", default=False, help="Display help")
-        
+
         group = self.add_argument_group("Output options")
         group.add_argument("--log-avg",
                          help="Type of average to report in iteration logs (mean or median)", default="mean")
@@ -61,7 +61,7 @@ class ArgumentParser(argparse.ArgumentParser):
         group.add_argument("--save-model-fit",
                          help="Save model fit",
                          action="store_true", default=False)
-        group.add_argument("--save-posterior",
+        group.add_argument("--save-posterior", "--save-mvn",
                          help="Save full posterior distribution",
                          action="store_true", default=False)
 

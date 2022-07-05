@@ -145,8 +145,9 @@ class CorticalSurface(DataStructure):
     def model2data(self, tensor, data_space):
         self._generate_projector(data_space)
         n2v = self.projector.surf2vol_matrix(edge_scale=True).astype(NP_DTYPE)
-        if data_space.size != n2v.shape[0]:
-            raise ValueError('Acquisition data size does not match projector')
+
+        #if data_space.size != n2v.shape[0]:
+        #    raise ValueError('Acquisition data size does not match projector')
         if self.size != n2v.shape[1]:
             raise ValueError('Model size does not match projector')
 
@@ -158,6 +159,7 @@ class CorticalSurface(DataStructure):
             values=masked_mat.data,
             dense_shape=masked_mat.shape,
         )
+
         return tf.sparse.sparse_dense_matmul(proj_tensor, tensor)
 
     def data2model(self, tensor, data_space):
@@ -166,8 +168,8 @@ class CorticalSurface(DataStructure):
         v2n = self.projector.vol2surf_matrix(edge_scale=False).astype(NP_DTYPE)
         #if tf.shape(tensor)[0] != v2n.shape[1]:
         #    raise ValueError('Tensor size does not match projector')
-        if data_space.size != v2n.shape[1]:
-            raise ValueError('Acquisition data size does not match projector')
+        #if data_space.size != v2n.shape[1]:
+        #    raise ValueError('Acquisition data size does not match projector')
         if self.size != v2n.shape[0]:
             raise ValueError('Model size does not match projector')
 

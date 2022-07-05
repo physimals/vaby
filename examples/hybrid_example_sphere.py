@@ -152,7 +152,7 @@ if opts.noise > 0:
     #SNR = 100 # realistic is about 10 - 20
     #N_VAR = 42 * np.sqrt(len(opts.plds) * opts.repeats) / SNR 
     data_vol += np.random.normal(0, noise_std_truth, data_vol.shape)
-data_model.data_space.save_data(data_vol, "hybrid_example_sphere_data_noisy", options["output"])
+data_model.data_space.save_data(data_vol, "hybrid_example_sphere_data_noisy", outdir=options["output"])
 
 # Run inference
 if opts.method == "svb":
@@ -186,8 +186,8 @@ if opts.spatial:
 runtime, inf = vaby.run(os.path.join(options["output"], "hybrid_example_sphere_data_noisy.nii.gz"), "aslrest", **options)
 
 # Save noiseless ground truth timeseries
-data_model.save_model_data(data.numpy(), "hybrid_example_sphere_data_clean", options['output'], save_model=True, save_native=True, pv_scale=True)
+data_model.save_model_data(data.numpy(), "hybrid_example_sphere_data_clean", outdir=options['output'], save_model=True, save_native=True, pv_scale=True)
 
 # Save ground truth CBF and ATT
-data_model.save_model_data(np.squeeze(cbf_true), "true_ftiss", options["output"], save_native=True, pv_scale=True)
-data_model.save_model_data(np.squeeze(att_true), "true_delttiss", options["output"], save_native=True, pv_scale=False)
+data_model.save_model_data(np.squeeze(cbf_true), "true_ftiss", outdir=options["output"], save_native=True, pv_scale=True)
+data_model.save_model_data(np.squeeze(att_true), "true_delttiss", outdir=options["output"], save_native=True, pv_scale=False)

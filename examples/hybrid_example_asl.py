@@ -133,9 +133,9 @@ att_true = np.concatenate([att_ctx_true, att_wm_true])[..., np.newaxis].astype(n
 data = asl_model.evaluate([cbf_true, att_true], tpts)
 
 # Save noiseless ground truth timeseries, CBF and ATT
-data_model.save_model_data(data.numpy(), "hybrid_example_asl_data_clean", options['output'], save_model=True, save_native=True, pv_scale=True)
-data_model.save_model_data(np.squeeze(cbf_true), "true_ftiss", options["output"], save_native=True, pv_scale=True)
-data_model.save_model_data(np.squeeze(att_true), "true_delttiss", options["output"], save_native=True, pv_scale=False)
+data_model.save_model_data(data.numpy(), "hybrid_example_asl_data_clean", outdir=options['output'], save_model=True, save_native=True, pv_scale=True)
+data_model.save_model_data(np.squeeze(cbf_true), "true_ftiss", outdir=options["output"], save_native=True, pv_scale=True)
+data_model.save_model_data(np.squeeze(att_true), "true_delttiss", outdir=options["output"], save_native=True, pv_scale=False)
 
 # Add noise in acquisition space
 data_vol = data_model.model_to_data(data, pv_scale=True)
@@ -148,7 +148,7 @@ if opts.noise > 0:
     data_vol += np.random.normal(0, noise_std_truth, data_vol.shape)
 
 # Save noisy data - this will be used as input
-data_model.data_space.save_data(data_vol, "hybrid_example_asl_data_noisy", options["output"])
+data_model.data_space.save_data(data_vol, "hybrid_example_asl_data_noisy", outdir=options["output"])
 
 # Run inference
 if opts.method == "svb":

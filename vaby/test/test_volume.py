@@ -42,7 +42,7 @@ def test_volume_3d_nii():
     SHAPE = [10, 10, 10]
     VOXEL_SIZES = [2.5, 3.5, 4.5]
     vol_data = np.random.normal(size=SHAPE)
-    affine = np.zeros((4, 4), dtype=np.float)
+    affine = np.zeros((4, 4), dtype=np.float32)
     for d in range(3): affine[d, d] = VOXEL_SIZES[d]
     nii = nib.Nifti1Image(vol_data, affine=affine)
     vol = Volume(nii=nii)
@@ -59,7 +59,7 @@ def test_volume_3d_nii_masked():
     VOXEL_SIZES = [2.5, 3.5, 4.5]
     vol_data = np.random.normal(size=SHAPE)
     mask = np.random.randint(0, 2, size=SHAPE)
-    affine = np.zeros((4, 4), dtype=np.float)
+    affine = np.zeros((4, 4), dtype=np.float32)
     for d in range(3): affine[d, d] = VOXEL_SIZES[d]
     nii = nib.Nifti1Image(vol_data, affine=affine)
     vol = Volume(nii=nii, mask=mask)

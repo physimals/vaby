@@ -132,7 +132,7 @@ class Volume(DataStructure):
         shape = self.shape
         if data.ndim > 1:
             shape = list(shape) + [data.shape[1]]
-        ndata = np.zeros(shape, dtype=np.float)
+        ndata = np.zeros(shape, dtype=np.float32)
         ndata[self.mask > 0] = data
         if self.srcdata.nii is not None:
             return nib.Nifti1Image(ndata, None, header=self.srcdata.nii.header)

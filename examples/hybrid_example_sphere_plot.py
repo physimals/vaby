@@ -55,7 +55,7 @@ cbf_ctx_true = nib.load(os.path.join(opts.outdir, 'true_ftiss_L.func.gii')).darr
 cbf_ctx_output = nib.load(os.path.join(opts.outdir, 'mean_ftiss_L.func.gii')).darrays[0].data
 act_ctx_true = nib.load(os.path.join(opts.outdir, 'hybrid_example_asl_data_clean_L.func.gii')).darrays[0].data
 act_ctx_true = np.mean(act_ctx_true, axis=1)
-act_noisy = nib.load(os.path.join(opts.outdir, 'input_data.nii.gz')).get_fdata().astype(np.float)
+act_noisy = nib.load(os.path.join(opts.outdir, 'input_data.nii.gz')).get_fdata().astype(np.float32)
 mask = nib.load(opts.mask).get_fdata() > 0
 act_noisy = act_noisy[mask]
 act_noisy = data_model.data_to_model(act_noisy, pv_scale=True)

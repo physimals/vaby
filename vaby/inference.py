@@ -92,7 +92,7 @@ class InferenceMethod(LogBase):
 
     def save(self, state, runtime=None, **kwargs):
         """
-        Save output to directory
+        Save output to directory and/or in-memory dictionary
 
         :param runtime: Runtime in seconds
 

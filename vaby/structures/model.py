@@ -78,5 +78,11 @@ class ModelSpace(DataStructure):
         return full_data
 
     def save_data(self, data, name, **kwargs):
+        # If there is only one part to the structure we don't need to bother including
+        # the name in saved files
+        strip_name = len(self.parts) == 1
         for struct, slc in zip(self.parts, self.slices):
-            struct.save_data(data[slc, ...], name + "_" + struct.name, **kwargs)
+            if strip_name:
+                struct.save_data(data[slc, ...], name, **kwargs)
+            else:
+                struct.save_data(data[slc, ...], name + "_" + struct.name, **kwargs)
